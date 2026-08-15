@@ -1,0 +1,11 @@
+services:
+    _instanceof:
+        Cryonighter\ValidRequestBundle\Patcher\PatcherInterface:
+            tags:
+                - { name: cryonighter.valid_request_bundle.patcher }
+
+    cryonighter.valid_request_bundle.payload_extractor:
+        class: Cryonighter\ValidRequestBundle\Service\PayloadExtractor
+        public: false
+        arguments:
+            $patchers: !tagged_iterator cryonighter.valid_request_bundle.patcher
