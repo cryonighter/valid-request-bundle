@@ -1,0 +1,12 @@
+framework:
+    secret: 'test-secret'
+    test: true
+    validation:
+        enabled: true
+    router:
+        utf8: true
+    error_controller: null
+
+services:
+    logger:
+        class: Psr\Log\NullLogger
