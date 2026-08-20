@@ -51,4 +51,53 @@ class ViolationTransformer
 
         return $newViolations;
     }
+
+    public function propertyToField(ConstraintViolationListInterface $violations, array $objectMap): ConstraintViolationListInterface
+    {
+        $newViolations = new ConstraintViolationList([]);
+
+        foreach ($violations as $violation) {
+            $propertyPath = explode('.', $violation->getPropertyPath());
+
+            foreach ($propertyPath as $key => $path) {
+                // Если $path содержит индекс, например contacts[0]
+                $matches = [];
+                preg_match('/(.+)(\[\d+])$/', $path, $matches);
+
+                if ($matches) {
+                    $path = $matches[1];
+                }
+
+                // Элемента может не быть (например, валидация лишних полей)
+                // Элемент может быть массивом, если исследование структуры пошло дальше, чем нужно для валидации (например, UploadedFile)
+                if (empty($objectMap[$path]) || !is_scalar($objectMap[$path])) {
+                    break;
+                }
+
+                $propertyPath[$key] = $objectMap[$path];
+
+                // Возвращаем индекс
+                if ($matches) {
+                    $propertyPath[$key] .= $matches[2];
+                }
+            }
+
+            $newViolations->add(
+                new ConstraintViolation(
+                    $violation->getMessage(),
+                    $violation->getMessageTemplate(),
+                    $violation->getParameters(),
+                    $violation->getRoot(),
+                    implode('.', $propertyPath),
+                    $violation->getInvalidValue(),
+                    $violation->getPlural(),
+                    $violation->getCode(),
+                    $violation->getConstraint(),
+                    $violation->getCause(),
+                ),
+            );
+        }
+
+        return $newViolations;
+    }
 }

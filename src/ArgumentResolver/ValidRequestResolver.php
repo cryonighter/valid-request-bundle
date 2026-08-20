@@ -5,9 +5,12 @@ namespace Cryonighter\ValidRequestBundle\ArgumentResolver;
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Service\ObjectCollector;
 use Cryonighter\ValidRequestBundle\Service\PayloadExtractor;
+use Cryonighter\ValidRequestBundle\Service\ReflectionUtilService;
 use Cryonighter\ValidRequestBundle\Service\ViolationListStorage;
+use Cryonighter\ValidRequestBundle\Service\ViolationTransformer;
 use ReflectionClass;
 use ReflectionException;
+use ReflectionProperty;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\ValueResolver;
 use Symfony\Component\HttpKernel\Controller\ValueResolverInterface;
@@ -22,7 +25,9 @@ readonly class ValidRequestResolver implements ValueResolverInterface
     public function __construct(
         private ObjectCollector $objectCollector,
         private PayloadExtractor $payloadExtractor,
+        private ReflectionUtilService $reflectionUtilService,
         private ValidatorInterface $validator,
+        private ViolationTransformer $violationTransformer,
         private ViolationListStorage $violationListStorage,
     ) {
     }
@@ -86,7 +91,10 @@ readonly class ValidRequestResolver implements ValueResolverInterface
         $groups = $this->payloadExtractor->resolveGroups($reflectionClass, $validRequestAttribute);
 
         // Вторая валидация для правил, требующих объекты
-        $violations = $this->validator->validate($dto, groups: $groups);
+        $violations = $this->violationTransformer->propertyToField(
+            $this->validator->validate($dto, groups: $groups),
+            $this->getObjectMap($reflectionClass->getProperties(), $validRequestAttribute),
+        );
 
         if ($violations->count() != 0) {
             if (!$hasViolationsArg) {
@@ -116,5 +124,35 @@ readonly class ValidRequestResolver implements ValueResolverInterface
         }
 
         return null;
+    }
+
+    /**
+     * @param ReflectionProperty[] $properties
+     * @param ValidRequest $validRequest
+     *
+     * @return array
+     *
+     * @throws ReflectionException
+     */
+    private function getObjectMap(array $properties, ValidRequest $validRequest): array
+    {
+        $data = [];
+
+        foreach ($properties as $property) {
+            if ($property->isVirtual()) {
+                continue;
+            }
+
+            $type = $property->getType();
+            $typeName = $type->getName();
+
+            if (!$type->isBuiltin()) {
+                $data[$property->getName()] = $this->getObjectMap(new ReflectionClass($typeName)->getProperties(), $validRequest);
+            } else {
+                $data[$property->getName()] = $this->reflectionUtilService->getFieldName($property, $validRequest);
+            }
+        }
+
+        return $data;
     }
 }
