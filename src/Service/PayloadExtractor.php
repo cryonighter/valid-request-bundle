@@ -91,6 +91,13 @@ readonly class PayloadExtractor
             $data = $patcher->patch($data, $request);
         }
 
+        // Это проверку пришлось перенести на более поздний этап, после формирования данных
+        // Иначе при отсутствии данных в основном источнике возвращается null, не смотря на
+        // то что они есть в альтернативных, указанных через BindRequestParam или патчер
+        if (empty($payload) && empty_data_recursive($data) && $allowedNull) {
+            return null;
+        }
+
         $violations = $this->violationTransformer->arrayKeyToObjectKey(
             $this->validator->validate($data, $constraints, $groups),
         );
@@ -162,10 +169,11 @@ readonly class PayloadExtractor
 
             $bindRequestParam = $this->reflectionUtilService->getBindRequestParamByGroups($property, $validRequest);
 
-            $source = $bindRequestParam?->source;
+            $source = $bindRequestParam?->source ?? $validRequest->source;
             $name = $bindRequestParam?->name ?: $property->getName();
             $type = $property->getType();
 
+            $hasValue = $this->hasRequestValue($name, $payload, $source, $request, $validRequest);
             $value = $this->getRequestValue($name, $payload, $source, $request, $validRequest);
 
             if ($bindRequestParam?->patcher) {
@@ -253,21 +261,36 @@ readonly class PayloadExtractor
 
             // Если пустая строка
             if ($value === '' && $isStringProtocol) {
-                if ($type->getName() != 'string') {
-                    $data[$name] = $this->reflectionUtilService->getPropertyDefaultValue($property);
+                // Если тип позволяет null
+                if ($type->allowsNull()) {
+                    $data[$name] = null;
 
                     continue;
                 }
 
-                if ($type->allowsNull()) {
+                if ($type->getName() != 'string') {
                     $data[$name] = $this->reflectionUtilService->getPropertyDefaultValue($property);
 
                     continue;
                 }
             }
 
+            // Если значение не передано вообще - используем значение по умолчанию
+            // Испольовать его при $value === null нельзя, null может быть валидным значением
+            if (!$hasValue) {
+                $data[$name] = $this->reflectionUtilService->getPropertyDefaultValue($property);
+
+                continue;
+            }
+
+            if ($value === null && $type->allowsNull()) {
+                $data[$name] = null;
+
+                continue;
+            }
+
             // Во всех остальных случаях
-            $data[$name] = $value ?? $this->reflectionUtilService->getPropertyDefaultValue($property);
+            $data[$name] = $value;
         }
 
         // Объединение с payload нужно, чтоб добавить поля, не описанные в объекте, но присутствующие в запросе
@@ -377,20 +400,37 @@ readonly class PayloadExtractor
         return new ExtendedCollection($constraints, allowExtraFields: true);
     }
 
-    private function getRequestValue(string $name, array $payload, ?RequestValueSource $source, Request $request, ValidRequest $validRequest): mixed
+    private function getRequestValue(string $name, array $payload, RequestValueSource $source, Request $request, ValidRequest $validRequest): mixed
     {
-        if (!$source || $source == $validRequest->source) {
+        if ($source == $validRequest->source) {
             return $payload[$name] ?? null;
         }
 
         return match ($source) {
-            RequestValueSource::attributes => $validRequest->source == RequestValueSource::attributes ? $payload[$name] ?? null : $request->attributes->get($name),
+            RequestValueSource::attributes => $request->attributes->get($name),
             RequestValueSource::cookies => $request->cookies->get($name),
             RequestValueSource::headers => $request->headers->get($name),
             RequestValueSource::files => $request->files->get($name),
             RequestValueSource::server => $request->server->get($name),
             RequestValueSource::payload => $request->getPayload()->get($name) ?? null,
             RequestValueSource::query => $request->query->get($name),
+        };
+    }
+
+    private function hasRequestValue(string $name, array $payload, RequestValueSource $source, Request $request, ValidRequest $validRequest): bool
+    {
+        if ($source == $validRequest->source) {
+            return array_key_exists($name, $payload);
+        }
+
+        return match ($source) {
+            RequestValueSource::attributes => $request->attributes->has($name),
+            RequestValueSource::cookies => $request->cookies->has($name),
+            RequestValueSource::headers => $request->headers->has($name),
+            RequestValueSource::files => $request->files->has($name),
+            RequestValueSource::server => $request->server->has($name),
+            RequestValueSource::payload => $request->getPayload()->has($name),
+            RequestValueSource::query => $request->query->has($name),
         };
     }
 
@@ -448,6 +488,19 @@ function array_diff_key_recursive(array $array1, array $array2): array
     }
 
     return $difference;
+}
+
+function empty_data_recursive(mixed $data): bool
+{
+    if (is_iterable($data) && !is_array($data)) {
+        $data = iterator_to_array($data);
+    }
+
+    if (is_array($data)) {
+        return array_all($data, empty_data_recursive(...));
+    }
+
+    return $data === null;
 }
 
 function camel_case(string $value): string

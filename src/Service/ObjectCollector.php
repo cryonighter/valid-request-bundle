@@ -52,14 +52,14 @@ readonly class ObjectCollector
             $value = $payload[$name] ?? null;
 
             if ($value === null) {
-                if ($parameter->isDefaultValueAvailable()) {
-                    $arguments[] = $parameter->getDefaultValue();
+                if ($type->allowsNull()) {
+                    $arguments[] = null;
 
                     continue;
                 }
 
-                if ($type->allowsNull()) {
-                    $arguments[] = null;
+                if ($parameter->isDefaultValueAvailable()) {
+                    $arguments[] = $parameter->getDefaultValue();
 
                     continue;
                 }
