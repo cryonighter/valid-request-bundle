@@ -2,7 +2,6 @@
 
 namespace Cryonighter\ValidRequestBundle\DependencyInjection\Compiler;
 
-use Cryonighter\ValidRequestBundle\Patcher\PatcherInterface;
 use Cryonighter\ValidRequestBundle\Service\PayloadExtractor;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -18,20 +17,8 @@ final class PatcherCompilerPass implements CompilerPassInterface
 
         $references = [];
 
-        foreach ($container->getDefinitions() as $id => $definition) {
-            if ($definition->isAbstract() || $definition->isSynthetic()) {
-                continue;
-            }
-
-            $class = $definition->getClass();
-
-            if ($class === null || !class_exists($class)) {
-                continue;
-            }
-
-            if (is_subclass_of($class, PatcherInterface::class)) {
-                $references[] = new Reference($id);
-            }
+        foreach ($container->findTaggedServiceIds('cryonighter.valid_request.patcher') as $id => $tags) {
+            $references[] = new Reference($id);
         }
 
         $container->getDefinition(PayloadExtractor::class)
