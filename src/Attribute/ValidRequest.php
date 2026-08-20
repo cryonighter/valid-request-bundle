@@ -40,7 +40,9 @@ class ValidRequest
 
     private function resolveArrayGroups(array $groups): array
     {
-        return match (array_all($groups, is_string(...))) {
+        // Нут нельзя использовать is_string(...), так как array_all() вызывает
+        // переданный колбэк с двумя аргументами — значением и ключом
+        return match (array_all($groups, static fn(mixed $value): bool => is_string($value))) {
             true => $groups,
             default => throw new RuntimeException('Invalid groups format'),
         };
