@@ -15,9 +15,22 @@ class ViolationTransformer
         foreach ($violations as $violation) {
             $propertyPath = $violation->getPropertyPath();
 
-            // Может выглядеть как [field][subfield]
-            if ($propertyPath[0] == '[') {
-                $propertyPath = substr(str_replace('][', '.', $propertyPath), 1, -1);
+            // Может выглядеть как [field][subfield] или даже [fields][0][subfield]
+            if (isset($propertyPath[0]) && $propertyPath[0] === '[') {
+                $propertyPath = substr($propertyPath, 1, -1);
+
+                $segments = explode('][', $propertyPath);
+
+                $result = '';
+                foreach ($segments as $segment) {
+                    if (ctype_digit($segment)) {
+                        $result .= '[' . $segment . ']';
+                    } else {
+                        $result .= ($result === '' ? '' : '.') . $segment;
+                    }
+                }
+
+                $propertyPath = $result;
             }
 
             $newViolations->add(
