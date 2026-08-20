@@ -1,11 +1,8 @@
 services:
-    _instanceof:
-        Cryonighter\ValidRequestBundle\Patcher\PatcherInterface:
-            tags:
-                - { name: cryonighter.valid_request_bundle.patcher }
-
-    cryonighter.valid_request_bundle.payload_extractor:
-        class: Cryonighter\ValidRequestBundle\Service\PayloadExtractor
+    _defaults:
+        autowire: true
+        autoconfigure: true
         public: false
-        arguments:
-            $patchers: !tagged_iterator cryonighter.valid_request_bundle.patcher
+
+    Cryonighter\ValidRequestBundle\:
+        resource: '../src/'
