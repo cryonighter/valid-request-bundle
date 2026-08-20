@@ -55,8 +55,18 @@ readonly class PayloadExtractor
             RequestValueSource::query => $request->query->all(),
         };
 
-        if (empty($payload) && $allowedNull) {
-            return null;
+        // Это, конечно, не корректно, так как иметь несколько значений для одного имени - нормально для заголовков.
+        // Но вся архитектура выстроена вокруг концепции "ключ=>занчение" и я не знаю, как сделать по другому.
+        // Порядок передачи заголовков все равно не гарантирован, поэтому беру первый в массиве
+        if ($validRequestAttribute->source == RequestValueSource::headers) {
+            $payload = array_map(fn(array $value): string => $value[0] ?? '', $payload);
+        }
+
+        // Обогощаем payload ключами camelCase
+        if ($validRequestAttribute->source == RequestValueSource::server) {
+            foreach ($payload as $key => $value) {
+                $payload[camel_case($key)] = $value;
+            }
         }
 
         $properties = $reflectionClass->getProperties();
@@ -438,4 +448,13 @@ function array_diff_key_recursive(array $array1, array $array2): array
     }
 
     return $difference;
+}
+
+function camel_case(string $value): string
+{
+    $words = explode('_', strtolower($value));
+
+    $firstWord = array_shift($words);
+
+    return $firstWord . implode('', array_map(ucfirst(...), $words));
 }
