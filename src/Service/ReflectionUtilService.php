@@ -18,10 +18,7 @@ class ReflectionUtilService
                 fn(ReflectionAttribute $attribute): BindRequestParam => $attribute->newInstance(),
                 $item->getAttributes(BindRequestParam::class),
             ),
-            fn(BindRequestParam $bindPayload): array => array_intersect(
-                $bindPayload->getArrayGroups(),
-                $validRequest->getArrayGroups(),
-            ),
+            fn(BindRequestParam $bindPayload): bool => $validRequest->validationGroups->intersects($bindPayload->validationGroups)
         );
     }
 

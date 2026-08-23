@@ -4,47 +4,30 @@ namespace Cryonighter\ValidRequestBundle\Attribute;
 
 use Attribute;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
-use RuntimeException;
+use Cryonighter\ValidRequestBundle\Patcher\PatcherInterface;
+use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
+use InvalidArgumentException;
 use Symfony\Component\Validator\Constraints\GroupSequence;
 
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_PARAMETER)]
-class ValidRequest
+readonly class ValidRequest
 {
-    private ?array $arrayGroups = null;
+    private(set) ValidationGroups $validationGroups;
 
+    /**
+     * @param RequestValueSource $source                   The source of the data
+     * @param string|GroupSequence|array|null $groups      The validation groups to apply to the data
+     * @param class-string<PatcherInterface>|null $patcher The patcher to apply to the data
+     */
     public function __construct(
-        public readonly RequestValueSource $source = RequestValueSource::payload,
-        public readonly string|GroupSequence|array|null $groups = null,
-        public readonly ?string $patcher = null,
+        public RequestValueSource $source = RequestValueSource::payload,
+        public string|GroupSequence|array|null $groups = null,
+        public ?string $patcher = null,
     ) {
-    }
-
-    public function getArrayGroups(): array
-    {
-        if ($this->arrayGroups === null) {
-            $this->arrayGroups = match (true) {
-                is_string($this->groups) && $this->groups => [$this->groups],
-                is_array($this->groups) && $this->groups => $this->resolveArrayGroups($this->groups),
-                $this->groups instanceof GroupSequence => match (true) {
-                    is_string($this->groups->groups) && $this->groups->groups => [$this->groups->groups],
-                    is_array($this->groups->groups) && $this->groups->groups => $this->resolveArrayGroups($this->groups->groups),
-                    $this->groups->groups instanceof GroupSequence => throw new RuntimeException('Too much nesting of groups'),
-                    default => ['Default'],
-                },
-                default => ['Default'],
-            };
+        if ($this->patcher !== null && !is_a($this->patcher, PatcherInterface::class, true)) {
+            throw new InvalidArgumentException('Patcher class "' . $this->patcher . '" must implement PatcherInterface');
         }
 
-        return $this->arrayGroups;
-    }
-
-    private function resolveArrayGroups(array $groups): array
-    {
-        // Нут нельзя использовать is_string(...), так как array_all() вызывает
-        // переданный колбэк с двумя аргументами — значением и ключом
-        return match (array_all($groups, static fn(mixed $value): bool => is_string($value))) {
-            true => $groups,
-            default => throw new RuntimeException('Invalid groups format'),
-        };
+        $this->validationGroups = new ValidationGroups($this->groups);
     }
 }
