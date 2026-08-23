@@ -4,7 +4,7 @@ namespace Cryonighter\ValidRequestBundle\Service;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
-use Cryonighter\ValidRequestBundle\Patcher\PatcherInterface;
+use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
 use Cryonighter\ValidRequestBundle\Validator\ExtendedCollection;
 use Cryonighter\ValidRequestBundle\Validator\NoExtraFields;
 use Cryonighter\ValidRequestBundle\Utils\NumberFormatParser;
@@ -12,7 +12,6 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionProperty;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Validator\Constraint;
@@ -26,7 +25,7 @@ readonly class PayloadExtractor
         private ValidatorInterface $validator,
         private ViolationTransformer $violationTransformer,
         private ReflectionUtilService $reflectionUtilService,
-        private iterable $patchers,
+        private PatcherLocator $patcherLocator,
     ) {
     }
 
@@ -78,15 +77,8 @@ readonly class PayloadExtractor
         $constraints = $this->getPropertiesAttributes($properties, $notExpectedFields, $validRequestAttribute);
         $groups = $this->resolveGroups($reflectionClass, $validRequestAttribute);
 
-        if ($validRequestAttribute?->patcher) {
-            $patcher = array_find(
-                iterator_to_array($this->patchers),
-                fn (PatcherInterface $patcher) => $validRequestAttribute->patcher === $patcher::class,
-            );
-
-            if (empty($patcher)) {
-                throw new RuntimeException('Patcher service "' . $validRequestAttribute->patcher . '" not found');
-            }
+        if ($validRequestAttribute->patcher) {
+            $patcher = $this->patcherLocator->get($validRequestAttribute->patcher);
 
             $data = $patcher->patch($data, $request);
         }
@@ -177,15 +169,9 @@ readonly class PayloadExtractor
             $value = $this->getRequestValue($name, $payload, $source, $request, $validRequest);
 
             if ($bindRequestParam?->patcher) {
-                foreach ($this->patchers as $patcher) {
-                    if ($bindRequestParam->patcher === $patcher::class) {
-                        $data[$name] = $patcher->patch($value, $request);
+                $data[$name] = $this->patcherLocator->get($bindRequestParam->patcher)->patch($value, $request);
 
-                        continue(2);
-                    }
-                }
-
-                throw new RuntimeException('Patcher service "' . $bindRequestParam->patcher . '" not found');
+                continue;
             }
 
             if ($value instanceof UploadedFile) {
