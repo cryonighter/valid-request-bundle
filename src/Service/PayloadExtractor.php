@@ -128,7 +128,7 @@ readonly class PayloadExtractor
 
             $data[$name] = $node->nested !== null
                 ? $this->getObjectStruct($node->nested, $validRequest)
-                : $node->type->getName();
+                : $node->type->name;
         }
 
         return $data;
@@ -167,21 +167,21 @@ readonly class PayloadExtractor
             $hasAssertValid = $node->hasAssertValid;
 
             // Если это невалидируемый объект или nullable объект - то внутреннюю структуру инициализировать не нужно
-            if ($value === null && !$type->isBuiltin() && ($type->allowsNull() || !$hasAssertValid)) {
+            if ($value === null && !$type->builtin && ($type->nullable || !$hasAssertValid)) {
                 $data[$name] = null;
 
                 continue;
             }
 
             // Если это валидируемый not nullable объект и данные являются массивом или отсутствуют - инициализируем внутреннюю структуру
-            if (!$type->isBuiltin() && $hasAssertValid && (is_array($value) || $value === null)) {
+            if (!$type->builtin && $hasAssertValid && (is_array($value) || $value === null)) {
                 $data[$name] = $this->addMissingFields($value ?? [], $node->nested, $request, $validRequest);
 
                 continue;
             }
 
             // Если это массив
-            if ($type->getName() == 'array' && is_array($value)) {
+            if ($type->name == 'array' && is_array($value)) {
                 // Если это массив объектов
                 if ($node->arrayItem !== null) {
                     $data[$name] = array_map(
@@ -197,7 +197,7 @@ readonly class PayloadExtractor
             $isStringProtocol = $source != RequestValueSource::payload || $request->getContentTypeFormat() == 'form';
 
             // Если это bool
-            if ($type->getName() == 'bool' && is_string($value) && $isStringProtocol && trim($value) === $value) {
+            if ($type->name == 'bool' && is_string($value) && $isStringProtocol && trim($value) === $value) {
                 if (in_array(strtolower($value), ['1', 'true', 'on', 'yes'], true)) {
                     $data[$name] = true;
                     continue;
@@ -211,8 +211,8 @@ readonly class PayloadExtractor
 
             // Если это int/float
             // TODO: проверить на псевдонимы, оставить комментарий если и так работает
-            if (in_array($type->getName(), ['int', 'float']) && is_string($value) && $isStringProtocol && trim($value) === $value) {
-                $numericValue = match ($type->getName()) {
+            if (in_array($type->name, ['int', 'float']) && is_string($value) && $isStringProtocol && trim($value) === $value) {
+                $numericValue = match ($type->name) {
                     'int' => NumberFormatParser::parseInt($value),
                     'float' => NumberFormatParser::parseFloat($value),
                 };
@@ -227,13 +227,13 @@ readonly class PayloadExtractor
             // Если пустая строка
             if ($value === '' && $isStringProtocol) {
                 // Если тип позволяет null
-                if ($type->allowsNull()) {
+                if ($type->nullable) {
                     $data[$name] = null;
 
                     continue;
                 }
 
-                if ($type->getName() != 'string') {
+                if ($type->name != 'string') {
                     $data[$name] = $node->defaultValue;
 
                     continue;
@@ -248,7 +248,7 @@ readonly class PayloadExtractor
                 continue;
             }
 
-            if ($value === null && $type->allowsNull()) {
+            if ($value === null && $type->nullable) {
                 $data[$name] = null;
 
                 continue;

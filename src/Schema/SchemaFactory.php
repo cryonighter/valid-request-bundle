@@ -9,6 +9,8 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionProperty;
+use RuntimeException;
+use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 
 final class SchemaFactory
@@ -29,7 +31,6 @@ final class SchemaFactory
      */
     public function create(string $className): ObjectSchema
     {
-        // Структура класса не зависит от групп и данных запроса, поэтому кэшируется по FQCN.
         return $this->cache[$className] ??= $this->build(new ReflectionClass($className), []);
     }
 
@@ -56,18 +57,23 @@ final class SchemaFactory
                 continue;
             }
 
-            $type = $property->getType();
-            $typeName = $type->getName();
+            $type = PropertyType::create($property);
 
             $nested = null;
             $arrayItem = null;
 
-            if (!$type->isBuiltin()) {
-                $nested = $this->build(new ReflectionClass($typeName), $path);
-            } elseif ($typeName === 'array') {
+            if (!$type->builtin) {
+                $nested = $this->build(new ReflectionClass($type->name), $path);
+            } elseif ($type->iterable) {
                 $itemType = $this->reflectionUtilService->getTypeFromAssertAll($property);
 
-                // TODO: а еще $typeFromAssertAll может быть массивом классов
+                if (is_array($itemType)) {
+                    throw new RuntimeException('Array type is not supported');
+                }
+
+                // На null не проверяю, так как null может быть как явно объявленный Assert\Type(null),
+                // что является ошибкой, так и признаком полного отсутствия аттрибута Assert\Type в Assert\All
+
                 if (is_string($itemType) && class_exists($itemType)) {
                     $arrayItem = $this->build(new ReflectionClass($itemType), $path);
                 }
@@ -78,8 +84,8 @@ final class SchemaFactory
             $nodes[$property->getName()] = new PropertyNode(
                 propertyName: $property->getName(),
                 type: $type,
-                reflection: $property,
                 bindings: $this->collectBindings($property),
+                constraints: $this->buildConstraints($property, $type),
                 nested: $nested,
                 arrayItem: $arrayItem,
                 hasAssertValid: !empty($property->getAttributes(Assert\Valid::class)),
@@ -100,5 +106,35 @@ final class SchemaFactory
             fn (ReflectionAttribute $attribute): BindRequestParam => $attribute->newInstance(),
             $property->getAttributes(BindRequestParam::class),
         );
+    }
+
+    /**
+     * @return Constraint[]
+     */
+    private function buildConstraints(ReflectionProperty $property, PropertyType $type): array
+    {
+        $constraints = [];
+
+        if (!$type->builtin || $type->iterable) {
+            foreach ($property->getAttributes(Assert\Valid::class) as $validConstraint) {
+                $constraints[] = $validConstraint->newInstance();
+            }
+        }
+
+        if ($type->iterable) {
+            foreach ($property->getAttributes(Assert\All::class) as $allConstraint) {
+                $constraints[] = $allConstraint->newInstance();
+            }
+        }
+
+        $notBlankConstraints = $property->getAttributes(Assert\NotBlank::class);
+        $notNullConstraints = $property->getAttributes(Assert\NotNull::class);
+        $typeConstraints = $property->getAttributes(Assert\Type::class);
+
+        foreach ([...$notBlankConstraints, ...$notNullConstraints, ...$typeConstraints] as $constraint) {
+            $constraints[] = $constraint->newInstance();
+        }
+
+        return $constraints;
     }
 }

@@ -4,21 +4,21 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
-use ReflectionProperty;
-use ReflectionType;
+use Symfony\Component\Validator\Constraint;
 
 readonly class PropertyNode
 {
     /**
-     * @param BindRequestParam[] $bindings  All repeatable #[BindRequestParam] of the property (group-agnostic)
-     * @param ObjectSchema|null  $nested     Schema of a nested object (always present when type is non-builtin class)
-     * @param ObjectSchema|null  $arrayItem  Schema of array element type resolved from Assert\All + Assert\Type
+     * @param BindRequestParam[]  $bindings    All repeatable #[BindRequestParam] of the property (group-agnostic)
+     * @param Constraint[]        $constraints
+     * @param ObjectSchema|null   $nested      Schema of a nested object (always present when type is non-builtin class)
+     * @param ObjectSchema|null   $arrayItem   Schema of array element type resolved from Assert\All + Assert\Type
      */
     public function __construct(
         public string $propertyName,
-        public ReflectionType $type,
-        public ReflectionProperty $reflection,
+        public PropertyType $type,
         public array $bindings,
+        public array $constraints,
         public ?ObjectSchema $nested = null,
         public ?ObjectSchema $arrayItem = null,
         public bool $hasAssertValid = false,

@@ -18,7 +18,7 @@ class ReflectionUtilService
                 fn(ReflectionAttribute $attribute): BindRequestParam => $attribute->newInstance(),
                 $item->getAttributes(BindRequestParam::class),
             ),
-            fn(BindRequestParam $bindPayload): bool => $validRequest->validationGroups->intersects($bindPayload->validationGroups)
+            fn(BindRequestParam $bindPayload): bool => $validRequest->validationGroups->intersects($bindPayload->validationGroups),
         );
     }
 
@@ -55,6 +55,9 @@ class ReflectionUtilService
             foreach ($allInstances as $all) {
                 foreach ($all->constraints as $constraint) {
                     if ($constraint instanceof Assert\Type) {
+                        // TODO: выбирает первый попавшийся, не смотря на группы
+                        // TODO: тут правельнее делать пересекающийся тип, но они пока не поддерживаются
+                        // TODO: но даже этот первый попавшийся тип модет быть массивом или даже null
                         return $constraint->type;
                     }
                 }
@@ -68,7 +71,7 @@ class ReflectionUtilService
     {
         return array_find(
             $parameter->getDeclaringClass()->getProperties() ?? [],
-            fn(ReflectionProperty $property): bool => $property->getName() === $parameter->getName()
+            fn(ReflectionProperty $property): bool => $property->getName() === $parameter->getName(),
         );
     }
 }

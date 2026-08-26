@@ -5,30 +5,21 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use Cryonighter\ValidRequestBundle\Validator\ExtendedCollection;
 use Cryonighter\ValidRequestBundle\Validator\NoExtraFields;
-use ReflectionProperty;
+use RuntimeException;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 
 final class ConstraintBuilder
 {
-    /**
-     * Builds the request-time ExtendedCollection from a cached, group-agnostic schema.
-     * Replaces PayloadExtractor::getPropertiesAttributes().
-     *
-     * @param array $notExpectedFields Result of array_diff_key_recursive(), keyed by FIELD name
-     */
     public function build(ObjectSchema $schema, ValidationGroups $groups, array $notExpectedFields): ExtendedCollection
     {
         $constraints = [];
 
         foreach ($schema->properties as $node) {
-            // Единственное место, где важны группы — выбор имени поля.
             $name = $node->fieldName($groups);
-            $property = $node->reflection;
             $type = $node->type;
 
-            // #[Assert\Valid] объект — под ключ кладётся под-коллекция (в оригинале: рекурсивный вызов).
-            if (!$type->isBuiltin() && $property->getAttributes(Assert\Valid::class)) {
+            if (!$type->builtin && $this->checkContainConstraint($node->constraints, [Assert\Valid::class])) {
                 $constraints[$name] = $this->build(
                     $node->nested,
                     $groups,
@@ -38,27 +29,40 @@ final class ConstraintBuilder
                 continue;
             }
 
-            if ($type->getName() == 'array' && $property->getAttributes(Assert\All::class)) {
-                $typeDefaultMessage = new ReflectionProperty(Assert\Type::class, 'message')->getDefaultValue();
+            $alls = array_filter($node->constraints, fn(Constraint $constraint): bool => $constraint instanceof Assert\All);
+
+            if ($type->iterable && $alls) {
                 $constraints[$name] = [];
 
-                foreach ($property->getAttributes(Assert\All::class) as $all) {
+                /** @var Assert\All[] $alls */
+                foreach ($alls as $all) {
                     $allConstraints = [];
 
-                    /** @var Constraint $constraint */
-                    foreach ($all->newInstance()->constraints as $constraint) {
+                    foreach ($all->constraints as $constraint) {
                         if ($this->isRequiredAssert($constraint::class)) {
-                            // TODO: нужно добавить кейс, где $constraint->type - массив типов
                             if ($constraint instanceof Assert\Type && is_string($constraint->type) && class_exists($constraint->type)) {
+                                // Если не задано пользовательское сообщение об ошибке - задаем свое
+                                $message = $constraint->message != new Assert\Type($constraint->type)->message
+                                    ? $constraint->message
+                                    : 'This value should be of type object.';
+
                                 $allConstraints[] = new Assert\Type(
                                     'array',
-                                    $constraint->message != $typeDefaultMessage ? $constraint->message : 'This value should be of type object.',
+                                    $message,
                                     $constraint->groups,
                                     $constraint->payload,
                                 );
-                                // Под-коллекция элемента массива (в оригинале — рекурсивный getPropertiesAttributes).
-                                // notExpectedFields для элементов массива в оригинале не считались (передавался []).
                                 $allConstraints[] = $this->build($node->arrayItem, $groups, []);
+                            } elseif ($constraint instanceof Assert\Type && is_string($constraint->type) && interface_exists($constraint->type)) {
+                                throw new RuntimeException('Interface type is not supported');
+                            } elseif ($constraint instanceof Assert\Type && !is_string($constraint->type)) {
+                                if (is_null($constraint->type)) {
+                                    throw new RuntimeException('Type is not specified');
+                                }
+
+                                if (is_array($constraint->type)) {
+                                    throw new RuntimeException('Array type is not supported');
+                                }
                             } else {
                                 $allConstraints[] = $constraint;
                             }
@@ -75,18 +79,18 @@ final class ConstraintBuilder
 
             $propertyConstraints = [];
 
-            foreach ($property->getAttributes() as $attribute) {
-                if ($this->isRequiredAssert($attribute->getName())) {
-                    $propertyConstraints[] = $attribute->newInstance();
+            foreach ($node->constraints as $constraint) {
+                if ($this->isRequiredAssert($constraint::class)) {
+                    $propertyConstraints[] = $constraint;
                 }
             }
 
             if (!$this->checkContainConstraint($propertyConstraints, [Assert\Type::class])) {
-                $propertyConstraints[] = new Assert\Type($type->getName());
+                $propertyConstraints[] = new Assert\Type($type->name);
             }
 
             if (!$this->checkContainConstraint($propertyConstraints, [Assert\NotBlank::class, Assert\NotNull::class])) {
-                if (!$type->allowsNull() && $node->defaultValue === null) {
+                if (!$type->nullable && $node->defaultValue === null) {
                     $propertyConstraints[] = new Assert\NotNull();
                 }
             }
@@ -106,6 +110,9 @@ final class ConstraintBuilder
         return new ExtendedCollection($constraints, allowExtraFields: true);
     }
 
+    /**
+     * @param class-string $class
+     */
     private function isRequiredAssert(string $class): bool
     {
         $isNotBlank = is_a($class, Assert\NotBlank::class, true);
