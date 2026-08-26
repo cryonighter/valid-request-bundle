@@ -6,15 +6,14 @@ use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
 use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
 use Cryonighter\ValidRequestBundle\Schema\ConstraintBuilder;
+use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
 use Cryonighter\ValidRequestBundle\Utils\NumberFormatParser;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
-use ReflectionProperty;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -24,7 +23,6 @@ readonly class PayloadExtractor
     public function __construct(
         private ValidatorInterface $validator,
         private ViolationTransformer $violationTransformer,
-        private ReflectionUtilService $reflectionUtilService,
         private SchemaFactory $schemaFactory,
         private ConstraintBuilder $constraintBuilder,
         private PatcherLocator $patcherLocator,
@@ -71,14 +69,15 @@ readonly class PayloadExtractor
         }
 
         $properties = $reflectionClass->getProperties();
+        $schema = $this->schemaFactory->create($reflectionClass->getName());
 
         $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
-            $this->notExpectedFields($payload, $properties, $validRequestAttribute) : [];
+            $this->notExpectedFields($payload, $schema, $validRequestAttribute) : [];
 
-        $data = $this->addMissingFields($payload, $properties, $request, $validRequestAttribute);
+        $data = $this->addMissingFields($payload, $schema, $request, $validRequestAttribute);
 
         $constraints = $this->constraintBuilder->build(
-            $this->schemaFactory->create($reflectionClass->getName()),
+            $schema,
             $validRequestAttribute->validationGroups,
             $notExpectedFields,
         );
@@ -118,60 +117,37 @@ readonly class PayloadExtractor
     }
 
     /**
-     * @param ReflectionProperty[] $properties
-     * @param ValidRequest $validRequest
-     *
-     * @return array
-     *
      * @throws ReflectionException
      */
-    private function getObjectStruct(array $properties, ValidRequest $validRequest): array
+    private function getObjectStruct(ObjectSchema $schema, ValidRequest $validRequest): array
     {
         $data = [];
 
-        foreach ($properties as $property) {
-            if ($property->isVirtual()) {
-                continue;
-            }
+        foreach ($schema->properties as $node) {
+            $name = $node->fieldName($validRequest->validationGroups);
 
-            $name = $this->reflectionUtilService->getFieldName($property, $validRequest);
-            $type = $property->getType();
-            $typeName = $type->getName();
-
-            if (!$type->isBuiltin()) {
-                $data[$name] = $this->getObjectStruct(new ReflectionClass($typeName)->getProperties(), $validRequest);
-            } else {
-                $data[$name] = $typeName;
-            }
+            $data[$name] = $node->nested !== null
+                ? $this->getObjectStruct($node->nested, $validRequest)
+                : $node->type->getName();
         }
 
         return $data;
     }
 
     /**
-     * @param array $payload
-     * @param ReflectionProperty[] $properties
-     * @param Request $request
-     * @param ValidRequest $validRequest
-     *
-     * @return array
-     *
      * @throws ReflectionException
      */
-    private function addMissingFields(array $payload, array $properties, Request $request, ValidRequest $validRequest): array
+    private function addMissingFields(array $payload, ObjectSchema $schema, Request $request, ValidRequest $validRequest): array
     {
         $data = [];
+        $groups = $validRequest->validationGroups;
 
-        foreach ($properties as $property) {
-            if ($property->isVirtual()) {
-                continue;
-            }
-
-            $bindRequestParam = $this->reflectionUtilService->getBindRequestParamByGroups($property, $validRequest);
+        foreach ($schema->properties as $node) {
+            $bindRequestParam = $node->resolveBinding($groups);
 
             $source = $bindRequestParam?->source ?? $validRequest->source;
-            $name = $bindRequestParam?->name ?: $property->getName();
-            $type = $property->getType();
+            $name = $bindRequestParam?->name ?: $node->propertyName;
+            $type = $node->type;
 
             $hasValue = $this->hasRequestValue($name, $payload, $source, $request, $validRequest);
             $value = $this->getRequestValue($name, $payload, $source, $request, $validRequest);
@@ -188,7 +164,7 @@ readonly class PayloadExtractor
                 continue;
             }
 
-            $hasAssertValid = !empty($property->getAttributes(Assert\Valid::class));
+            $hasAssertValid = $node->hasAssertValid;
 
             // Если это невалидируемый объект или nullable объект - то внутреннюю структуру инициализировать не нужно
             if ($value === null && !$type->isBuiltin() && ($type->allowsNull() || !$hasAssertValid)) {
@@ -199,22 +175,17 @@ readonly class PayloadExtractor
 
             // Если это валидируемый not nullable объект и данные являются массивом или отсутствуют - инициализируем внутреннюю структуру
             if (!$type->isBuiltin() && $hasAssertValid && (is_array($value) || $value === null)) {
-                $data[$name] = $this->addMissingFields($value ?? [], new ReflectionClass($type->getName())->getProperties(), $request, $validRequest);
+                $data[$name] = $this->addMissingFields($value ?? [], $node->nested, $request, $validRequest);
 
                 continue;
             }
 
             // Если это массив
             if ($type->getName() == 'array' && is_array($value)) {
-                $typeFromAssertAll = $this->reflectionUtilService->getTypeFromAssertAll($property);
-
                 // Если это массив объектов
-                // TODO: а еще $typeFromAssertAll может быть массивом классов
-                if (is_string($typeFromAssertAll) && class_exists($typeFromAssertAll)) {
-                    $properties = new ReflectionClass($typeFromAssertAll)->getProperties();
-
+                if ($node->arrayItem !== null) {
                     $data[$name] = array_map(
-                        fn(mixed $item): mixed => is_array($item) ? $this->addMissingFields($item, $properties, $request, $validRequest) : $item,
+                        fn(mixed $item): mixed => is_array($item) ? $this->addMissingFields($item, $node->arrayItem, $request, $validRequest) : $item,
                         $value,
                     );
 
@@ -263,7 +234,7 @@ readonly class PayloadExtractor
                 }
 
                 if ($type->getName() != 'string') {
-                    $data[$name] = $this->reflectionUtilService->getPropertyDefaultValue($property);
+                    $data[$name] = $node->defaultValue;
 
                     continue;
                 }
@@ -272,7 +243,7 @@ readonly class PayloadExtractor
             // Если значение не передано вообще - используем значение по умолчанию
             // Испольовать его при $value === null нельзя, null может быть валидным значением
             if (!$hasValue) {
-                $data[$name] = $this->reflectionUtilService->getPropertyDefaultValue($property);
+                $data[$name] = $node->defaultValue;
 
                 continue;
             }
@@ -326,17 +297,11 @@ readonly class PayloadExtractor
     }
 
     /**
-     * @param array $payload
-     * @param ReflectionProperty[] $properties
-     * @param ValidRequest $validRequest
-     *
-     * @return array
-     *
      * @throws ReflectionException
      */
-    private function notExpectedFields(array $payload, array $properties, ValidRequest $validRequest): array
+    private function notExpectedFields(array $payload, ObjectSchema $schema, ValidRequest $validRequest): array
     {
-        return array_diff_key_recursive($payload, $this->getObjectStruct($properties, $validRequest));
+        return array_diff_key_recursive($payload, $this->getObjectStruct($schema, $validRequest));
     }
 }
 

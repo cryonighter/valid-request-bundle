@@ -3,14 +3,15 @@
 namespace Cryonighter\ValidRequestBundle\ArgumentResolver;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
+use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
 use Cryonighter\ValidRequestBundle\Service\ObjectCollector;
 use Cryonighter\ValidRequestBundle\Service\PayloadExtractor;
-use Cryonighter\ValidRequestBundle\Service\ReflectionUtilService;
 use Cryonighter\ValidRequestBundle\Service\ViolationListStorage;
 use Cryonighter\ValidRequestBundle\Service\ViolationTransformer;
+use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use ReflectionClass;
 use ReflectionException;
-use ReflectionProperty;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\ValueResolver;
 use Symfony\Component\HttpKernel\Controller\ValueResolverInterface;
@@ -25,7 +26,7 @@ readonly class ValidRequestResolver implements ValueResolverInterface
     public function __construct(
         private ObjectCollector $objectCollector,
         private PayloadExtractor $payloadExtractor,
-        private ReflectionUtilService $reflectionUtilService,
+        private SchemaFactory $schemaFactory,
         private ValidatorInterface $validator,
         private ViolationTransformer $violationTransformer,
         private ViolationListStorage $violationListStorage,
@@ -93,7 +94,10 @@ readonly class ValidRequestResolver implements ValueResolverInterface
         // Вторая валидация для правил, требующих объекты
         $violations = $this->violationTransformer->propertyToField(
             $this->validator->validate($dto, groups: $groups),
-            $this->getObjectMap($reflectionClass->getProperties(), $validRequestAttribute),
+            $this->getObjectMap(
+                $this->schemaFactory->create($reflectionClass->getName()),
+                $validRequestAttribute->validationGroups,
+            ),
         );
 
         if ($violations->count() != 0) {
@@ -126,31 +130,14 @@ readonly class ValidRequestResolver implements ValueResolverInterface
         return null;
     }
 
-    /**
-     * @param ReflectionProperty[] $properties
-     * @param ValidRequest $validRequest
-     *
-     * @return array
-     *
-     * @throws ReflectionException
-     */
-    private function getObjectMap(array $properties, ValidRequest $validRequest): array
+    private function getObjectMap(ObjectSchema $schema, ValidationGroups $groups): array
     {
         $data = [];
 
-        foreach ($properties as $property) {
-            if ($property->isVirtual()) {
-                continue;
-            }
-
-            $type = $property->getType();
-            $typeName = $type->getName();
-
-            if (!$type->isBuiltin()) {
-                $data[$property->getName()] = $this->getObjectMap(new ReflectionClass($typeName)->getProperties(), $validRequest);
-            } else {
-                $data[$property->getName()] = $this->reflectionUtilService->getFieldName($property, $validRequest);
-            }
+        foreach ($schema->properties as $node) {
+            $data[$node->propertyName] = $node->nested !== null
+                ? $this->getObjectMap($node->nested, $groups)
+                : $node->fieldName($groups);
         }
 
         return $data;
