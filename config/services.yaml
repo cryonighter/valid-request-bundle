@@ -6,3 +6,8 @@ services:
 
     Cryonighter\ValidRequestBundle\:
         resource: '../src/'
+
+    Cryonighter\ValidRequestBundle\Schema\SchemaFactory:
+        arguments:
+            $cacheDir: '%kernel.cache_dir%/valid_request_schema'
+            $debug: '%kernel.debug%'

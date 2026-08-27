@@ -5,21 +5,26 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Schema\Exception\CyclicSchemaException;
 use Cryonighter\ValidRequestBundle\Service\ReflectionUtilService;
+use Psr\Cache\InvalidArgumentException;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionProperty;
 use RuntimeException;
+use Symfony\Component\Config\ConfigCache;
+use Symfony\Component\Config\Resource\FileResource;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 
 final class SchemaFactory
 {
     /** @var array<class-string, ObjectSchema> */
-    private array $cache = [];
+    private array $memory = [];
 
     public function __construct(
         private readonly ReflectionUtilService $reflectionUtilService,
+        private readonly string $cacheDir,
+        private readonly bool $debug,
     ) {
     }
 
@@ -28,27 +33,55 @@ final class SchemaFactory
      *
      * @throws ReflectionException
      * @throws CyclicSchemaException
+     * @throws InvalidArgumentException
      */
-    public function create(string $className): ObjectSchema
+    public function create(string $className, array $classes = [], array &$files = []): ObjectSchema
     {
-        return $this->cache[$className] ??= $this->build(new ReflectionClass($className), []);
+        if (isset($this->memory[$className])) {
+            return $this->memory[$className];
+        }
+
+        $cacheFile = $this->cacheDir . '/' . str_replace('\\', '_', $className) . '.php';
+        $cache = new ConfigCache($cacheFile, $this->debug);
+
+        if ($cache->isFresh()) {
+            return $this->memory[$className] = unserialize(file_get_contents($cacheFile));
+        }
+
+        $schema = $this->build(new ReflectionClass($className), $classes, $files);
+
+        $cache->write(
+            serialize($schema),
+            array_map(
+                fn (string $file): FileResource => new FileResource($file),
+                array_values(array_unique($files)),
+            ),
+        );
+
+        return $this->memory[$className] = $schema;
     }
 
     /**
-     * @param class-string[] $path Ordered stack of types being built, for cycle detection
+     * @param class-string[] $classes Ordered stack of types being built, for cycle detection
+     * @param class-string[] $files
      *
-     * @throws ReflectionException
      * @throws CyclicSchemaException
+     * @throws InvalidArgumentException
+     * @throws ReflectionException
      */
-    private function build(ReflectionClass $reflectionClass, array $path): ObjectSchema
+    private function build(ReflectionClass $reflectionClass, array $classes, array &$files): ObjectSchema
     {
         $className = $reflectionClass->getName();
 
-        if (in_array($className, $path, true)) {
-            throw new CyclicSchemaException([...$path, $className]);
+        if (in_array($className, $classes, true)) {
+            throw new CyclicSchemaException([...$classes, $className]);
         }
 
-        $path[] = $className;
+        $classes[] = $className;
+
+        if ($file = $reflectionClass->getFileName()) {
+            $files[] = $file;
+        }
 
         $nodes = [];
 
@@ -63,7 +96,7 @@ final class SchemaFactory
             $arrayItem = null;
 
             if (!$type->builtin) {
-                $nested = $this->build(new ReflectionClass($type->name), $path);
+                $nested = $this->create($type->name, $classes, $files);
             } elseif ($type->iterable) {
                 $itemType = $this->reflectionUtilService->getTypeFromAssertAll($property);
 
@@ -75,7 +108,7 @@ final class SchemaFactory
                 // что является ошибкой, так и признаком полного отсутствия аттрибута Assert\Type в Assert\All
 
                 if (is_string($itemType) && class_exists($itemType)) {
-                    $arrayItem = $this->build(new ReflectionClass($itemType), $path);
+                    $arrayItem = $this->create($itemType, $classes, $files);
                 }
             }
 
