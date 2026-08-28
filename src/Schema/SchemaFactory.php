@@ -5,7 +5,6 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Schema\Exception\CyclicSchemaException;
 use Cryonighter\ValidRequestBundle\Service\ReflectionUtilService;
-use Psr\Cache\InvalidArgumentException;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
@@ -33,7 +32,6 @@ final class SchemaFactory
      *
      * @throws ReflectionException
      * @throws CyclicSchemaException
-     * @throws InvalidArgumentException
      */
     public function create(string $className, array $classes = [], array &$files = []): ObjectSchema
     {
@@ -66,7 +64,6 @@ final class SchemaFactory
      * @param class-string[] $files
      *
      * @throws CyclicSchemaException
-     * @throws InvalidArgumentException
      * @throws ReflectionException
      */
     private function build(ReflectionClass $reflectionClass, array $classes, array &$files): ObjectSchema

@@ -5,7 +5,6 @@ namespace Cryonighter\ValidRequestBundle\Service;
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
 use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
-use Cryonighter\ValidRequestBundle\Schema\ConstraintBuilder;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
 use Cryonighter\ValidRequestBundle\Utils\NumberFormatParser;
@@ -21,11 +20,11 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 readonly class PayloadExtractor
 {
     public function __construct(
-        private ValidatorInterface $validator,
-        private ViolationTransformer $violationTransformer,
-        private SchemaFactory $schemaFactory,
         private ConstraintBuilder $constraintBuilder,
         private PatcherLocator $patcherLocator,
+        private SchemaFactory $schemaFactory,
+        private ValidatorInterface $validator,
+        private ViolationTransformer $violationTransformer,
     ) {
     }
 

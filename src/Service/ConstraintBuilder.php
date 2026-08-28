@@ -1,7 +1,8 @@
 <?php
 
-namespace Cryonighter\ValidRequestBundle\Schema;
+namespace Cryonighter\ValidRequestBundle\Service;
 
+use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use Cryonighter\ValidRequestBundle\Validator\ExtendedCollection;
 use Cryonighter\ValidRequestBundle\Validator\NoExtraFields;
