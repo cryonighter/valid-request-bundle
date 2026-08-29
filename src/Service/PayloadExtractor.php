@@ -16,6 +16,9 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use function Cryonighter\ValidRequestBundle\array_diff_key_recursive;
+use function Cryonighter\ValidRequestBundle\camel_case;
+use function Cryonighter\ValidRequestBundle\empty_data_recursive;
 
 readonly class PayloadExtractor
 {
@@ -60,14 +63,13 @@ readonly class PayloadExtractor
             $payload = array_map(fn(array $value): string => $value[0] ?? '', $payload);
         }
 
-        // Обогощаем payload ключами camelCase
+        // Обогощаем payload ключами в camelCase
         if ($validRequestAttribute->source == RequestValueSource::server) {
             foreach ($payload as $key => $value) {
                 $payload[camel_case($key)] = $value;
             }
         }
 
-        $properties = $reflectionClass->getProperties();
         $schema = $this->schemaFactory->create($reflectionClass->getName());
 
         $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
@@ -302,47 +304,4 @@ readonly class PayloadExtractor
     {
         return array_diff_key_recursive($payload, $this->getObjectStruct($schema, $validRequest));
     }
-}
-
-function array_diff_key_recursive(array $array1, array $array2): array
-{
-    $difference = array_diff_key($array1, $array2);
-
-    foreach ($array1 as $key => $value) {
-        if (array_key_exists($key, $array2) && is_array($value)) {
-            if (is_array($array2[$key])) {
-                $recursiveDiff = array_diff_key_recursive($value, $array2[$key]);
-
-                if (!empty($recursiveDiff)) {
-                    $difference[$key] = $recursiveDiff;
-                }
-            } else {
-                $difference[$key] = $value;
-            }
-        }
-    }
-
-    return $difference;
-}
-
-function empty_data_recursive(mixed $data): bool
-{
-    if (is_iterable($data) && !is_array($data)) {
-        $data = iterator_to_array($data);
-    }
-
-    if (is_array($data)) {
-        return array_all($data, empty_data_recursive(...));
-    }
-
-    return $data === null;
-}
-
-function camel_case(string $value): string
-{
-    $words = explode('_', strtolower($value));
-
-    $firstWord = array_shift($words);
-
-    return $firstWord . implode('', array_map(ucfirst(...), $words));
 }

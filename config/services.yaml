@@ -6,6 +6,10 @@ services:
 
     Cryonighter\ValidRequestBundle\:
         resource: '../src/'
+        exclude:
+            - '../src/Attribute'
+            - '../src/Enum'
+            - '../src/functions.php'
 
     Cryonighter\ValidRequestBundle\Schema\SchemaFactory:
         arguments:

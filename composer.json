@@ -32,7 +32,10 @@
     "autoload": {
         "psr-4": {
             "Cryonighter\\ValidRequestBundle\\": "src/"
-        }
+        },
+        "files": [
+            "src/functions.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
