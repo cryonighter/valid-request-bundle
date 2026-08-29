@@ -3,11 +3,11 @@
 namespace Cryonighter\ValidRequestBundle\Service;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Cryonighter\ValidRequestBundle\Caster\ValueCastComposite;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
 use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
-use Cryonighter\ValidRequestBundle\Utils\NumberFormatParser;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
@@ -28,6 +28,7 @@ readonly class PayloadExtractor
         private SchemaFactory $schemaFactory,
         private ValidatorInterface $validator,
         private ViolationTransformer $violationTransformer,
+        private ValueCastComposite $valueCastComposite,
     ) {
     }
 
@@ -197,29 +198,11 @@ readonly class PayloadExtractor
             // TODO: Проверить application/xml и text/xml (ну и multipart/form-data заодно)
             $isStringProtocol = $source != RequestValueSource::payload || $request->getContentTypeFormat() == 'form';
 
-            // Если это bool
-            if ($type->name == 'bool' && is_string($value) && $isStringProtocol && trim($value) === $value) {
-                if (in_array(strtolower($value), ['1', 'true', 'on', 'yes'], true)) {
-                    $data[$name] = true;
-                    continue;
-                }
+            if (is_string($value) && $isStringProtocol && trim($value) === $value) {
+                $result = $this->valueCastComposite->cast($value, $type);
 
-                if (in_array(strtolower($value), ['0', 'false', 'off', 'no'], true)) {
-                    $data[$name] = false;
-                    continue;
-                }
-            }
-
-            // Если это int/float
-            // TODO: проверить на псевдонимы, оставить комментарий если и так работает
-            if (in_array($type->name, ['int', 'float']) && is_string($value) && $isStringProtocol && trim($value) === $value) {
-                $numericValue = match ($type->name) {
-                    'int' => NumberFormatParser::parseInt($value),
-                    'float' => NumberFormatParser::parseFloat($value),
-                };
-
-                if ($numericValue !== null) {
-                    $data[$name] = $numericValue;
+                if ($result->converted) {
+                    $data[$name] = $result->value;
 
                     continue;
                 }
