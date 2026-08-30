@@ -4,6 +4,7 @@ namespace Cryonighter\ValidRequestBundle\Service;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Caster\ValueCastComposite;
+use Cryonighter\ValidRequestBundle\Caster\CastContext;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
 use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
@@ -26,6 +27,7 @@ readonly class PayloadExtractor
         private ConstraintBuilder $constraintBuilder,
         private PatcherLocator $patcherLocator,
         private SchemaFactory $schemaFactory,
+        private TextProtocolDetector $stringProtocolDetector,
         private ValidatorInterface $validator,
         private ViolationTransformer $violationTransformer,
         private ValueCastComposite $valueCastComposite,
@@ -166,6 +168,17 @@ readonly class PayloadExtractor
                 continue;
             }
 
+            $isTextProtocol = $this->stringProtocolDetector->isStringProtocol($source, $request);
+            $castContext = new CastContext($type, $source, $request, $isTextProtocol);
+
+            $castResult = $this->valueCastComposite->cast($value, $castContext);
+
+            if ($castResult->converted) {
+                $data[$name] = $castResult->value;
+
+                continue;
+            }
+
             $hasAssertValid = $node->hasAssertValid;
 
             // Если это невалидируемый объект или nullable объект - то внутреннюю структуру инициализировать не нужно
@@ -195,21 +208,8 @@ readonly class PayloadExtractor
                 }
             }
 
-            // TODO: Проверить application/xml и text/xml (ну и multipart/form-data заодно)
-            $isStringProtocol = $source != RequestValueSource::payload || $request->getContentTypeFormat() == 'form';
-
-            if (is_string($value) && $isStringProtocol && trim($value) === $value) {
-                $result = $this->valueCastComposite->cast($value, $type);
-
-                if ($result->converted) {
-                    $data[$name] = $result->value;
-
-                    continue;
-                }
-            }
-
             // Если пустая строка
-            if ($value === '' && $isStringProtocol) {
+            if ($value === '' && $isTextProtocol) {
                 // Если тип позволяет null
                 if ($type->nullable) {
                     $data[$name] = null;

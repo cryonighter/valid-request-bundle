@@ -362,6 +362,69 @@ class ProfileUserRequest
 а также определен разделитель целой и дробной части (точка или запятая).
 
 
+### Кастеры
+
+Кастер — это сервис, реализующий интерфейс `ValueCasterInterface`, который отвечает за приведение
+сырого значения из запроса к типу свойства класса. Встроенные преобразования типов
+(`bool`, `int`, `float`), описанные выше, реализованы именно через кастеры.
+
+Механизм кастеров открыт для расширения: вы можете написать собственный кастер
+для любого типа — например ваших собственных Value Object.
+
+Интерфейс состоит из двух методов:
+
+- `supports(PropertyType $type): bool` — определяет, обрабатывает ли кастер данный тип свойства.
+  Помимо имени типа, `PropertyType` предоставляет признаки `builtin`, `nullable` и `iterable`,
+  что позволяет тонко управлять применимостью кастера.
+- `cast(mixed $value, CastContext $context): CastResult` — выполняет преобразование значения.
+  Верните `CastResult::converted($value)`, если преобразование выполнено, или `CastResult::skip()`,
+  чтобы передать управление дальше (следующему кастеру или структурной логике сборки объекта).
+
+`CastContext` несёт контекст текущего преобразования:
+- тип свойства (`type`)
+- источник данных (`source`)
+- объект запроса (`request`)
+- признак текстового протокола (`isTextProtocol`)
+
+Последний удобен для кастеров, которые должны срабатывать только для строковых форматов передачи данных
+(`application/x-www-form-urlencoded`, `multipart/form-data`), — встроенные `bool`/`int`/`float` работают именно так.
+
+Например, реализуем кастер для Value Object UserId:
+
+```php
+use App\ValueObject\UserId;
+use Cryonighter\ValidRequestBundle\Caster\CastContext;
+use Cryonighter\ValidRequestBundle\Caster\CastResult;
+use Cryonighter\ValidRequestBundle\Caster\ValueCasterInterface;
+use Cryonighter\ValidRequestBundle\Schema\PropertyType;
+
+class UserIdCaster implements ValueCasterInterface
+{
+    public function supports(PropertyType $type): bool
+    {
+        return !$type->builtin && is_a($type->name, UserId::class, true);
+    }
+
+    public function cast(mixed $value, CastContext $context): CastResult
+    {
+        if (is_numeric($value) && $value > 0) {
+            return CastResult::converted(new UserId($value));
+        }
+
+        return CastResult::skip();
+    }
+}
+```
+
+Кастеры перебираются по порядку, и побеждает первый, вернувший `CastResult::converted(...)`.
+Встроенные кастеры зарегистрированы с пониженным приоритетом, поэтому ваш собственный кастер
+для того же типа будет применён раньше встроенного без дополнительной настройки приоритетов.
+
+> **Определение текстового протокола** осуществляется через сервис, реализующий интерфейс `TextProtocolDetector`.
+> Если критерии «текстовости» протокола в вашем проекте отличаются от стандартных,
+> вы можете переопределить его реализацию через стандартные механизмы Symfony.
+
+
 ### Группы валидации
 
 Группы валидации передаются через параметр `groups` атрибута `#[ValidRequest]`, аналогично передаче групп напрямую в сервис валидатора:

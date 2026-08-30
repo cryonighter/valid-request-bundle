@@ -12,8 +12,12 @@ final class IntCaster implements ValueCasterInterface
         return $type->name === 'int';
     }
 
-    public function cast(mixed $value, PropertyType $type): CastResult
+    public function cast(mixed $value, CastContext $context): CastResult
     {
+        if (!$context->isTextProtocol || !is_string($value) || trim($value) !== $value) {
+            return CastResult::skip();
+        }
+
         $parsed = NumberFormatParser::parseInt($value);
 
         return $parsed !== null ? CastResult::converted($parsed) : CastResult::skip();

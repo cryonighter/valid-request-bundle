@@ -27,11 +27,15 @@ readonly class ValueCastComposite implements ValueCasterInterface
         return false;
     }
 
-    public function cast(mixed $value, PropertyType $type): CastResult
+    public function cast(mixed $value, CastContext $context): CastResult
     {
         foreach ($this->casters as $caster) {
-            if ($caster->supports($type)) {
-                return $caster->cast($value, $type);
+            if ($caster->supports($context->type)) {
+                $result = $caster->cast($value, $context);
+
+                if ($result->converted) {
+                    return $result;
+                }
             }
         }
 

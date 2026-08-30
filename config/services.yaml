@@ -15,3 +15,21 @@ services:
         arguments:
             $cacheDir: '%kernel.cache_dir%/valid_request_schema'
             $debug: '%kernel.debug%'
+
+    # Встроенные кастеры регистрируются явно с пониженным приоритетом и без
+    # автоконфигурации (чтоб тег не был навешан дважды - атрибутом и этим конфигом),
+    # чтобы пользовательские (priority 0 через AutoconfigureTag) перехватывали тип раньше.
+    Cryonighter\ValidRequestBundle\Caster\BoolCaster:
+        autoconfigure: false
+        tags:
+            - { name: 'cryonighter.valid_request.value_caster', priority: -100 }
+
+    Cryonighter\ValidRequestBundle\Caster\FloatCaster:
+        autoconfigure: false
+        tags:
+            - { name: 'cryonighter.valid_request.value_caster', priority: -100 }
+
+    Cryonighter\ValidRequestBundle\Caster\IntCaster:
+        autoconfigure: false
+        tags:
+            - { name: 'cryonighter.valid_request.value_caster', priority: -100 }

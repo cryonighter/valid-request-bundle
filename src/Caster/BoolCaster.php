@@ -11,8 +11,12 @@ final class BoolCaster implements ValueCasterInterface
         return $type->name === 'bool';
     }
 
-    public function cast(mixed $value, PropertyType $type): CastResult
+    public function cast(mixed $value, CastContext $context): CastResult
     {
+        if (!$context->isTextProtocol || !is_string($value) || trim($value) !== $value) {
+            return CastResult::skip();
+        }
+
         if (in_array(strtolower($value), ['1', 'true', 'on', 'yes'], true)) {
             return CastResult::converted(true);
         }
