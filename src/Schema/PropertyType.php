@@ -2,6 +2,7 @@
 
 namespace Cryonighter\ValidRequestBundle\Schema;
 
+use BackedEnum;
 use ReflectionIntersectionType;
 use ReflectionNamedType;
 use ReflectionProperty;
@@ -12,6 +13,7 @@ use Traversable;
 readonly class PropertyType
 {
     public bool $iterable;
+    public bool $isEnum;
 
     public function __construct(
         public string $name,
@@ -19,6 +21,7 @@ readonly class PropertyType
         public bool $nullable,
     ) {
         $this->iterable = $this->isIterable();
+        $this->isEnum = !$builtin && is_subclass_of($name, BackedEnum::class);
     }
 
     public static function create(ReflectionProperty $property): self

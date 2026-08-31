@@ -33,3 +33,13 @@ services:
         autoconfigure: false
         tags:
             - { name: 'cryonighter.valid_request.value_caster', priority: -100 }
+
+    Cryonighter\ValidRequestBundle\Caster\BackedEnumCaster:
+        autoconfigure: false
+        tags:
+            - { name: 'cryonighter.valid_request.value_caster', priority: -100 }
+
+    Cryonighter\ValidRequestBundle\Caster\DateTimeCaster:
+        autoconfigure: false
+        tags:
+            - { name: 'cryonighter.valid_request.value_caster', priority: -100 }

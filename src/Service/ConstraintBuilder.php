@@ -6,6 +6,7 @@ use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use Cryonighter\ValidRequestBundle\Validator\ExtendedCollection;
 use Cryonighter\ValidRequestBundle\Validator\NoExtraFields;
+use DateTimeInterface;
 use RuntimeException;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -86,8 +87,16 @@ final class ConstraintBuilder
                 }
             }
 
-            if (!$this->checkContainConstraint($propertyConstraints, [Assert\Type::class])) {
-                $propertyConstraints[] = new Assert\Type($type->name);
+            if (!$this->checkContainConstraint($propertyConstraints, [Assert\Type::class]) && !$type->isEnum) {
+                $message = is_subclass_of($type->name, DateTimeInterface::class)
+                    ? 'This value should be of type datetime or timestamp.'
+                    : null;
+
+                $propertyConstraints[] = new Assert\Type($type->name, $message);
+            }
+
+            if (!$this->checkContainConstraint($propertyConstraints, [Assert\Choice::class]) && $type->isEnum) {
+                $propertyConstraints[] = new Assert\Choice(choices: $type->name::cases());
             }
 
             if (!$this->checkContainConstraint($propertyConstraints, [Assert\NotBlank::class, Assert\NotNull::class])) {
@@ -112,15 +121,16 @@ final class ConstraintBuilder
     }
 
     /**
-     * @param class-string $class
+     * @param class-string $assertClass
      */
-    private function isRequiredAssert(string $class): bool
+    private function isRequiredAssert(string $assertClass): bool
     {
-        $isNotBlank = is_a($class, Assert\NotBlank::class, true);
-        $isNotNull = is_a($class, Assert\NotNull::class, true);
-        $isType = is_a($class, Assert\Type::class, true);
+        $isNotBlank = is_a($assertClass, Assert\NotBlank::class, true);
+        $isNotNull = is_a($assertClass, Assert\NotNull::class, true);
+        $isType = is_a($assertClass, Assert\Type::class, true);
+        $isChoice = is_a($assertClass, Assert\Choice::class, true);
 
-        return $isNotNull || $isNotBlank || $isType;
+        return $isNotNull || $isNotBlank || $isType || $isChoice;
     }
 
     private function checkContainConstraint(array $constraints, array $checkedConstraints): bool

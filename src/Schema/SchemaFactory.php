@@ -5,6 +5,7 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Schema\Exception\CyclicSchemaException;
 use Cryonighter\ValidRequestBundle\Service\ReflectionUtilService;
+use DateTimeInterface;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
@@ -92,9 +93,11 @@ final class SchemaFactory
             $nested = null;
             $arrayItem = null;
 
-            if (!$type->builtin) {
+            if (!$type->builtin && !$type->iterable && !$this->isEmbeddedClass($type->name)) {
                 $nested = $this->create($type->name, $classes, $files);
             } elseif ($type->iterable) {
+                // TODO: сюда могут попасть не только коллекции, но и пользовательские
+                // TODO: объекты, итерирующиеся по собственным полям. Пока игнорируем этот кейс.
                 $itemType = $this->reflectionUtilService->getTypeFromAssertAll($property);
 
                 if (is_array($itemType)) {
@@ -166,5 +169,13 @@ final class SchemaFactory
         }
 
         return $constraints;
+    }
+
+    /**
+     * @param class-string $className
+     */
+    public function isEmbeddedClass(string $className): bool
+    {
+        return enum_exists($className) || is_subclass_of($className, DateTimeInterface::class);
     }
 }
