@@ -2,10 +2,13 @@
 
 namespace Cryonighter\ValidRequestBundle\Service;
 
+use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionParameter;
+use ReflectionProperty;
 use RuntimeException;
 
 readonly class ObjectCollector
@@ -46,7 +49,7 @@ readonly class ObjectCollector
         $arguments = [];
 
         foreach ($parameters as $parameter) {
-            $name = $this->reflectionUtilService->getFieldName($parameter, $validRequest);
+            $name = $this->getFieldName($parameter, $validRequest);
             $type = $parameter->getType();
 
             $value = $payload[$name] ?? null;
@@ -94,5 +97,21 @@ readonly class ObjectCollector
         }
 
         return $arguments;
+    }
+
+    public function getFieldName(ReflectionProperty|ReflectionParameter $item, ValidRequest $validRequest): string
+    {
+        return $this->getBindRequestParamByGroups($item, $validRequest)?->name ?: $item->getName();
+    }
+
+    private function getBindRequestParamByGroups(ReflectionProperty|ReflectionParameter $item, ValidRequest $validRequest): ?BindRequestParam
+    {
+        return array_find(
+            array_map(
+                fn(ReflectionAttribute $attribute): BindRequestParam => $attribute->newInstance(),
+                $item->getAttributes(BindRequestParam::class),
+            ),
+            fn(BindRequestParam $bindPayload): bool => $validRequest->validationGroups->intersects($bindPayload->validationGroups),
+        );
     }
 }

@@ -8,13 +8,9 @@ use Cryonighter\ValidRequestBundle\Caster\CastContext;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
 use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
-use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
-use ReflectionAttribute;
-use ReflectionClass;
 use ReflectionException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use function Cryonighter\ValidRequestBundle\array_diff_key_recursive;
@@ -26,7 +22,6 @@ readonly class PayloadExtractor
     public function __construct(
         private ConstraintBuilder $constraintBuilder,
         private PatcherLocator $patcherLocator,
-        private SchemaFactory $schemaFactory,
         private TextProtocolDetector $stringProtocolDetector,
         private ValidatorInterface $validator,
         private ViolationTransformer $violationTransformer,
@@ -34,19 +29,15 @@ readonly class PayloadExtractor
     ) {
     }
 
-    public function resolveGroups(ReflectionClass $reflectionClass, ValidRequest $validRequestAttribute): array
-    {
-        return $validRequestAttribute->groups ?: array_filter(['Default', $this->getGroupSequence($reflectionClass)]);
-    }
-
     /**
      * @throws ReflectionException
      * @throws ValidationFailedException
      */
     public function extractValidPayload(
-        ReflectionClass $reflectionClass,
+        ObjectSchema $schema,
         ValidRequest $validRequestAttribute,
         Request $request,
+        array $groups,
         bool $allowedNull,
     ): ?array {
         $payload = match ($validRequestAttribute->source) {
@@ -73,20 +64,7 @@ readonly class PayloadExtractor
             }
         }
 
-        $schema = $this->schemaFactory->create($reflectionClass->getName());
-
-        $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
-            $this->notExpectedFields($payload, $schema, $validRequestAttribute) : [];
-
-        $data = $this->addMissingFields($payload, $schema, $request, $validRequestAttribute);
-
-        $constraints = $this->constraintBuilder->build(
-            $schema,
-            $validRequestAttribute->validationGroups,
-            $notExpectedFields,
-        );
-
-        $groups = $this->resolveGroups($reflectionClass, $validRequestAttribute);
+        $data = $this->preparePayloadData($payload, $schema, $request, $validRequestAttribute);
 
         if ($validRequestAttribute->patcher) {
             $patcher = $this->patcherLocator->get($validRequestAttribute->patcher);
@@ -101,6 +79,15 @@ readonly class PayloadExtractor
             return null;
         }
 
+        $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
+            $this->notExpectedFields($payload, $schema, $validRequestAttribute) : [];
+
+        $constraints = $this->constraintBuilder->build(
+            $schema,
+            $validRequestAttribute->validationGroups,
+            $notExpectedFields,
+        );
+
         $violations = $this->violationTransformer->arrayKeyToObjectKey(
             $this->validator->validate($data, $constraints, $groups),
         );
@@ -112,36 +99,10 @@ readonly class PayloadExtractor
         return $data;
     }
 
-    private function getGroupSequence(ReflectionClass $reflectionClass): ?Assert\GroupSequence
-    {
-        return array_find(
-            $reflectionClass->getAttributes(),
-            fn (ReflectionAttribute $attribute): bool => $attribute->getName() == Assert\GroupSequence::class,
-        )?->newInstance();
-    }
-
     /**
      * @throws ReflectionException
      */
-    private function getObjectStruct(ObjectSchema $schema, ValidRequest $validRequest): array
-    {
-        $data = [];
-
-        foreach ($schema->properties as $node) {
-            $name = $node->fieldName($validRequest->validationGroups);
-
-            $data[$name] = $node->nested !== null
-                ? $this->getObjectStruct($node->nested, $validRequest)
-                : $node->type->name;
-        }
-
-        return $data;
-    }
-
-    /**
-     * @throws ReflectionException
-     */
-    private function addMissingFields(array $payload, ObjectSchema $schema, Request $request, ValidRequest $validRequest): array
+    private function preparePayloadData(array $payload, ObjectSchema $schema, Request $request, ValidRequest $validRequest): array
     {
         $data = [];
         $groups = $validRequest->validationGroups;
@@ -190,7 +151,7 @@ readonly class PayloadExtractor
 
             // Если это валидируемый not nullable объект и данные являются массивом или отсутствуют - инициализируем внутреннюю структуру
             if (!$type->builtin && $hasAssertValid && (is_array($value) || $value === null)) {
-                $data[$name] = $this->addMissingFields($value ?? [], $node->nested, $request, $validRequest);
+                $data[$name] = $this->preparePayloadData($value ?? [], $node->nested, $request, $validRequest);
 
                 continue;
             }
@@ -200,7 +161,7 @@ readonly class PayloadExtractor
                 // Если это массив объектов
                 if ($node->arrayItem !== null) {
                     $data[$name] = array_map(
-                        fn(mixed $item): mixed => is_array($item) ? $this->addMissingFields($item, $node->arrayItem, $request, $validRequest) : $item,
+                        fn(mixed $item): mixed => is_array($item) ? $this->preparePayloadData($item, $node->arrayItem, $request, $validRequest) : $item,
                         $value,
                     );
 
@@ -280,11 +241,8 @@ readonly class PayloadExtractor
         };
     }
 
-    /**
-     * @throws ReflectionException
-     */
     private function notExpectedFields(array $payload, ObjectSchema $schema, ValidRequest $validRequest): array
     {
-        return array_diff_key_recursive($payload, $this->getObjectStruct($schema, $validRequest));
+        return array_diff_key_recursive($payload, $schema->getObjectStruct($validRequest));
     }
 }

@@ -17,14 +17,6 @@ final readonly class ValidationGroups
         $this->groups = $this->normalize($groups);
     }
 
-    /**
-     * @return string[]
-     */
-    public function toArray(): array
-    {
-        return $this->groups;
-    }
-
     public function intersects(self $other): bool
     {
         return (bool) array_intersect($this->groups, $other->groups);

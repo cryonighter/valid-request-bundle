@@ -16,7 +16,7 @@ use Symfony\Component\Config\Resource\FileResource;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 
-final class SchemaFactory
+class SchemaFactory
 {
     /** @var array<class-string, ObjectSchema> */
     private array $memory = [];
@@ -115,8 +115,6 @@ final class SchemaFactory
                 }
             }
 
-            $defaultValue = $this->reflectionUtilService->getPropertyDefaultValue($property);
-
             $nodes[$property->getName()] = new PropertyNode(
                 propertyName: $property->getName(),
                 type: $type,
@@ -125,8 +123,7 @@ final class SchemaFactory
                 nested: $nested,
                 arrayItem: $arrayItem,
                 hasAssertValid: !empty($property->getAttributes(Assert\Valid::class)),
-                hasDefault: $property->hasDefaultValue() || $defaultValue !== null,
-                defaultValue: $defaultValue,
+                defaultValue: $this->getPropertyDefaultValue($property),
             );
         }
 
@@ -177,8 +174,21 @@ final class SchemaFactory
     /**
      * @param class-string $className
      */
-    public function isEmbeddedClass(string $className): bool
+    private function isEmbeddedClass(string $className): bool
     {
         return enum_exists($className) || is_subclass_of($className, DateTimeInterface::class);
+    }
+
+    private function getPropertyDefaultValue(ReflectionProperty $property): mixed
+    {
+        // Promoted property
+        foreach ($property->getDeclaringClass()->getConstructor()?->getParameters() ?? [] as $param) {
+            if ($param->getName() === $property->getName() && $param->isPromoted()) {
+                return $param->isDefaultValueAvailable() ? $param->getDefaultValue() : null;
+            }
+        }
+
+        // Classic property
+        return $property->hasDefaultValue() ? $property->getDefaultValue() : null;
     }
 }

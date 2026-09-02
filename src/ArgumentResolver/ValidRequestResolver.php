@@ -3,17 +3,18 @@
 namespace Cryonighter\ValidRequestBundle\ArgumentResolver;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
-use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
 use Cryonighter\ValidRequestBundle\Service\ObjectCollector;
 use Cryonighter\ValidRequestBundle\Service\PayloadExtractor;
 use Cryonighter\ValidRequestBundle\Service\ViolationListStorage;
 use Cryonighter\ValidRequestBundle\Service\ViolationTransformer;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
+use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\ValueResolver;
+use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\HttpKernel\Controller\ValueResolverInterface;
 use Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadata;
 use Symfony\Component\Validator\ConstraintViolationList;
@@ -65,11 +66,20 @@ readonly class ValidRequestResolver implements ValueResolverInterface
             return [];
         }
 
+        $schema = $this->schemaFactory->create($reflectionClass->getName());
+        $groups = $this->resolveGroups($reflectionClass, $validRequestAttribute->validationGroups);
+
         $hasViolationsArg = $this->violationListStorage->hasViolationsArg($request, $argument);
 
         try {
             // Извлекает данные из запроса и проводит минимальную валидацию, чтоб собрать объект.
-            $data = $this->payloadExtractor->extractValidPayload($reflectionClass, $validRequestAttribute, $request, $argument->isNullable());
+            $data = $this->payloadExtractor->extractValidPayload(
+                $schema,
+                $validRequestAttribute,
+                $request,
+                $groups,
+                $argument->isNullable(),
+            );
         } catch (ValidationFailedException $exception) {
             if (!$hasViolationsArg) {
                 throw $exception;
@@ -89,15 +99,11 @@ readonly class ValidRequestResolver implements ValueResolverInterface
         }
 
         $dto = $this->objectCollector->collect($reflectionClass, $data, $validRequestAttribute);
-        $groups = $this->payloadExtractor->resolveGroups($reflectionClass, $validRequestAttribute);
 
         // Вторая валидация для правил, требующих объекты
         $violations = $this->violationTransformer->propertyToField(
             $this->validator->validate($dto, groups: $groups),
-            $this->getObjectMap(
-                $this->schemaFactory->create($reflectionClass->getName()),
-                $validRequestAttribute->validationGroups,
-            ),
+            $schema->getObjectMap($validRequestAttribute->validationGroups),
         );
 
         if ($violations->count() != 0) {
@@ -109,6 +115,19 @@ readonly class ValidRequestResolver implements ValueResolverInterface
         }
 
         yield $dto;
+    }
+
+    private function resolveGroups(ReflectionClass $reflectionClass, ValidationGroups $validationGroups): array
+    {
+        return $validationGroups->groups ?: array_filter(['Default', $this->getGroupSequence($reflectionClass)]);
+    }
+
+    private function getGroupSequence(ReflectionClass $reflectionClass): ?Assert\GroupSequence
+    {
+        return array_find(
+            $reflectionClass->getAttributes(),
+            fn (ReflectionAttribute $attribute): bool => is_a($attribute->getName(), Assert\GroupSequence::class, true),
+        )?->newInstance();
     }
 
     private function getValidRequestAttribute(ReflectionClass $reflectionClass, ArgumentMetadata $argument): ?ValidRequest
@@ -128,18 +147,5 @@ readonly class ValidRequestResolver implements ValueResolverInterface
         }
 
         return null;
-    }
-
-    private function getObjectMap(ObjectSchema $schema, ValidationGroups $groups): array
-    {
-        $data = [];
-
-        foreach ($schema->properties as $node) {
-            $data[$node->propertyName] = $node->nested !== null
-                ? $this->getObjectMap($node->nested, $groups)
-                : $node->fieldName($groups);
-        }
-
-        return $data;
     }
 }

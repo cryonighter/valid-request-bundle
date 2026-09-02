@@ -24,10 +24,10 @@ readonly class ValidRequest
         public string|GroupSequence|array|null $groups = null,
         public ?string $patcher = null,
     ) {
-        if ($this->patcher !== null && !is_a($this->patcher, PatcherInterface::class, true)) {
-            throw new InvalidArgumentException('Patcher class "' . $this->patcher . '" must implement PatcherInterface');
+        if ($patcher !== null && !is_a($patcher, PatcherInterface::class, true)) {
+            throw new InvalidArgumentException('Patcher class "' . $patcher . '" must implement PatcherInterface');
         }
 
-        $this->validationGroups = new ValidationGroups($this->groups);
+        $this->validationGroups = new ValidationGroups($groups);
     }
 }

@@ -24,7 +24,6 @@ readonly class PropertyNode
         public ?ObjectSchema $nested = null,
         public ?ObjectSchema $arrayItem = null,
         public bool $hasAssertValid = false,
-        public bool $hasDefault = false,
         public mixed $defaultValue = null,
     ) {
     }
