@@ -72,7 +72,7 @@ class SourceController extends AbstractTestController
             return $this->createErrorResponse($violations);
         }
 
-        return new JsonResponse(['token' => $request->token]);
+        return new JsonResponse(['xApiToken' => $request->xApiToken]);
     }
 
     /**

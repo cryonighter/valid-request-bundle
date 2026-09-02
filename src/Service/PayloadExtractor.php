@@ -7,6 +7,7 @@ use Cryonighter\ValidRequestBundle\Caster\ValueCastComposite;
 use Cryonighter\ValidRequestBundle\Caster\CastContext;
 use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
 use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
+use Cryonighter\ValidRequestBundle\Payload\Payload;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use ReflectionException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -14,7 +15,6 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use function Cryonighter\ValidRequestBundle\array_diff_key_recursive;
-use function Cryonighter\ValidRequestBundle\camel_case;
 use function Cryonighter\ValidRequestBundle\empty_data_recursive;
 
 readonly class PayloadExtractor
@@ -40,42 +40,18 @@ readonly class PayloadExtractor
         array $groups,
         bool $allowedNull,
     ): ?array {
-        $payload = match ($validRequestAttribute->source) {
-            RequestValueSource::attributes => $request->attributes->all(),
-            RequestValueSource::files => $request->files->all(),
-            RequestValueSource::cookies => $request->cookies->all(),
-            RequestValueSource::headers => $request->headers->all(),
-            RequestValueSource::payload => $request->getPayload()->all(),
-            RequestValueSource::server => $request->server->all(),
-            RequestValueSource::query => $request->query->all(),
-        };
+        $payload = Payload::createFromRequest($request, $validRequestAttribute);
 
-        // Это, конечно, не корректно, так как иметь несколько значений для одного имени - нормально для заголовков.
-        // Но вся архитектура выстроена вокруг концепции "ключ=>занчение" и я не знаю, как сделать по другому.
-        // Порядок передачи заголовков все равно не гарантирован, поэтому беру первый в массиве
-        if ($validRequestAttribute->source == RequestValueSource::headers) {
-            $payload = array_map(fn(array $value): string => $value[0] ?? '', $payload);
-        }
-
-        // Обогощаем payload ключами в camelCase
-        if ($validRequestAttribute->source == RequestValueSource::server) {
-            foreach ($payload as $key => $value) {
-                $payload[camel_case($key)] = $value;
-            }
-        }
-
-        $data = $this->preparePayloadData($payload, $schema, $request, $validRequestAttribute);
+        $data = $this->preparePayloadData($payload, $schema);
 
         if ($validRequestAttribute->patcher) {
-            $patcher = $this->patcherLocator->get($validRequestAttribute->patcher);
-
-            $data = $patcher->patch($data, $request);
+            $data = $this->patcherLocator->get($validRequestAttribute->patcher)->patch($data, $request);
         }
 
         // Это проверку пришлось перенести на более поздний этап, после формирования данных
         // Иначе при отсутствии данных в основном источнике возвращается null, не смотря на
         // то что они есть в альтернативных, указанных через BindRequestParam или патчер
-        if (empty($payload) && empty_data_recursive($data) && $allowedNull) {
+        if ($payload->empty() && empty_data_recursive($data) && $allowedNull) {
             return null;
         }
 
@@ -102,9 +78,13 @@ readonly class PayloadExtractor
     /**
      * @throws ReflectionException
      */
-    private function preparePayloadData(array $payload, ObjectSchema $schema, Request $request, ValidRequest $validRequest): array
+    private function preparePayloadData(Payload $payload, ObjectSchema $schema): array
     {
         $data = [];
+
+        $request = $payload->request;
+        $validRequest = $payload->validRequest;
+
         $groups = $validRequest->validationGroups;
 
         foreach ($schema->properties as $node) {
@@ -114,8 +94,8 @@ readonly class PayloadExtractor
             $name = $bindRequestParam?->name ?: $node->propertyName;
             $type = $node->type;
 
-            $hasValue = $this->hasRequestValue($name, $payload, $source, $request, $validRequest);
-            $value = $this->getRequestValue($name, $payload, $source, $request, $validRequest);
+            $hasValue = $payload->hasValue($name, $source);
+            $value = $payload->getValue($name, $source);
 
             if ($bindRequestParam?->patcher) {
                 $data[$name] = $this->patcherLocator->get($bindRequestParam->patcher)->patch($value, $request);
@@ -151,7 +131,7 @@ readonly class PayloadExtractor
 
             // Если это валидируемый not nullable объект и данные являются массивом или отсутствуют - инициализируем внутреннюю структуру
             if (!$type->builtin && $hasAssertValid && (is_array($value) || $value === null)) {
-                $data[$name] = $this->preparePayloadData($value ?? [], $node->nested, $request, $validRequest);
+                $data[$name] = $this->preparePayloadData($payload->nested($name), $node->nested);
 
                 continue;
             }
@@ -161,7 +141,9 @@ readonly class PayloadExtractor
                 // Если это массив объектов
                 if ($node->arrayItem !== null) {
                     $data[$name] = array_map(
-                        fn(mixed $item): mixed => is_array($item) ? $this->preparePayloadData($item, $node->arrayItem, $request, $validRequest) : $item,
+                        fn(mixed $item): mixed => is_array($item)
+                            ? $this->preparePayloadData(new Payload($item, $request, $validRequest), $node->arrayItem)
+                            : $item, // TODO: а надо ли?
                         $value,
                     );
 
@@ -204,45 +186,11 @@ readonly class PayloadExtractor
         }
 
         // Объединение с payload нужно, чтоб добавить поля, не описанные в объекте, но присутствующие в запросе
-        return array_merge($payload, $data);
+        return array_merge($payload->toArray(), $data);
     }
 
-    private function getRequestValue(string $name, array $payload, RequestValueSource $source, Request $request, ValidRequest $validRequest): mixed
+    private function notExpectedFields(Payload $payload, ObjectSchema $schema, ValidRequest $validRequest): array
     {
-        if ($source == $validRequest->source) {
-            return $payload[$name] ?? null;
-        }
-
-        return match ($source) {
-            RequestValueSource::attributes => $request->attributes->get($name),
-            RequestValueSource::cookies => $request->cookies->get($name),
-            RequestValueSource::headers => $request->headers->get($name),
-            RequestValueSource::files => $request->files->get($name),
-            RequestValueSource::server => $request->server->get($name),
-            RequestValueSource::payload => $request->getPayload()->get($name) ?? null,
-            RequestValueSource::query => $request->query->get($name),
-        };
-    }
-
-    private function hasRequestValue(string $name, array $payload, RequestValueSource $source, Request $request, ValidRequest $validRequest): bool
-    {
-        if ($source == $validRequest->source) {
-            return array_key_exists($name, $payload);
-        }
-
-        return match ($source) {
-            RequestValueSource::attributes => $request->attributes->has($name),
-            RequestValueSource::cookies => $request->cookies->has($name),
-            RequestValueSource::headers => $request->headers->has($name),
-            RequestValueSource::files => $request->files->has($name),
-            RequestValueSource::server => $request->server->has($name),
-            RequestValueSource::payload => $request->getPayload()->has($name),
-            RequestValueSource::query => $request->query->has($name),
-        };
-    }
-
-    private function notExpectedFields(array $payload, ObjectSchema $schema, ValidRequest $validRequest): array
-    {
-        return array_diff_key_recursive($payload, $schema->getObjectStruct($validRequest));
+        return array_diff_key_recursive($payload->toArray(), $schema->getObjectStruct($validRequest));
     }
 }

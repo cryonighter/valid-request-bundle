@@ -11,6 +11,6 @@ readonly class HeaderRequest
 {
     public function __construct(
         #[Assert\NotBlank]
-        public string $token,
+        public string $xApiToken,
     ) {}
 }

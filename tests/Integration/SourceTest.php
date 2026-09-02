@@ -167,11 +167,7 @@ class SourceTest extends AbstractWebTestCase
             [],
             [],
             [
-                // В этом кейсе тестируется дефолтное совпадение заголовка и свойства класса по имени.
-                // Здесь мы не можем использовать заголовок типа X-Api-Token и передавать его
-                // как HTTP_X_API_TOKEN, потому что свойство класса не может иметь дефисов
-                // в названии, а большие буквы будут преобразованы в маленькие самим симфони.
-                'HTTP_TOKEN' => 'my-secret-token',
+                'HTTP_X_API_TOKEN' => 'my-secret-token',
             ],
         );
 
@@ -179,11 +175,11 @@ class SourceTest extends AbstractWebTestCase
 
         $data = $this->getJsonResponse($browser);
 
-        $this->assertSame('my-secret-token', $data['token']);
+        $this->assertSame('my-secret-token', $data['xApiToken']);
     }
 
     /**
-     * Заголовок отсутствует: Token не передан в запросе.
+     * Заголовок отсутствует: X-Api-Token не передан в запросе.
      * Violations для xApiToken передаются в контроллер.
      */
     public function testHeadersSourceMissingTokenReceivesViolation(): void
@@ -197,11 +193,11 @@ class SourceTest extends AbstractWebTestCase
 
         $paths = array_column($data['errors'], 'property');
 
-        $this->assertContains('token', $paths);
+        $this->assertContains('xApiToken', $paths);
     }
 
     /**
-     * Пустой заголовок: Token передан с пустым значением.
+     * Пустой заголовок: X-Api-Token передан с пустым значением.
      * Нарушает NotBlank, violations передаются в контроллер.
      */
     public function testHeadersSourceEmptyTokenReceivesViolation(): void
@@ -213,7 +209,7 @@ class SourceTest extends AbstractWebTestCase
             [],
             [],
             [
-                'HTTP_TOKEN' => '',
+                'HTTP_X_API_TOKEN' => '',
             ],
         );
 
@@ -223,7 +219,7 @@ class SourceTest extends AbstractWebTestCase
 
         $paths = array_column($data['errors'], 'property');
 
-        $this->assertContains('token', $paths);
+        $this->assertContains('xApiToken', $paths);
     }
 
     // =========================================================================

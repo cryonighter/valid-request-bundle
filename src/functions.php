@@ -35,12 +35,3 @@ function empty_data_recursive(mixed $data): bool
 
     return $data === null;
 }
-
-function camel_case(string $value): string
-{
-    $words = explode('_', strtolower($value));
-
-    $firstWord = array_shift($words);
-
-    return $firstWord . implode('', array_map(ucfirst(...), $words));
-}
