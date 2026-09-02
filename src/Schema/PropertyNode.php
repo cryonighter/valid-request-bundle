@@ -8,6 +8,8 @@ use Symfony\Component\Validator\Constraint;
 
 readonly class PropertyNode
 {
+    public const string file = __FILE__;
+
     /**
      * @param BindRequestParam[]  $bindings    All repeatable #[BindRequestParam] of the property (group-agnostic)
      * @param Constraint[]        $constraints

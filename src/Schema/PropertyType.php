@@ -12,6 +12,8 @@ use Traversable;
 
 readonly class PropertyType
 {
+    public const string file = __FILE__;
+
     public bool $iterable;
     public bool $isEnum;
 

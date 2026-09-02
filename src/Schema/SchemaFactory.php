@@ -47,6 +47,9 @@ final class SchemaFactory
             return $this->memory[$className] = unserialize(file_get_contents($cacheFile));
         }
 
+        // Изменения самих классов схемы тоже должно инфалидировать кэш
+        $files += [ObjectSchema::file, PropertyNode::file, PropertyType::file, __FILE__];
+
         $schema = $this->build(new ReflectionClass($className), $classes, $files);
 
         $cache->write(
