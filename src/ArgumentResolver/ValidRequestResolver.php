@@ -4,7 +4,7 @@ namespace Cryonighter\ValidRequestBundle\ArgumentResolver;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
-use Cryonighter\ValidRequestBundle\Service\ObjectCollector;
+use Cryonighter\ValidRequestBundle\Service\ObjectHydrator;
 use Cryonighter\ValidRequestBundle\Service\PayloadExtractor;
 use Cryonighter\ValidRequestBundle\Service\ViolationListStorage;
 use Cryonighter\ValidRequestBundle\Service\ViolationTransformer;
@@ -25,7 +25,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 readonly class ValidRequestResolver implements ValueResolverInterface
 {
     public function __construct(
-        private ObjectCollector $objectCollector,
+        private ObjectHydrator $objectHydrator,
         private PayloadExtractor $payloadExtractor,
         private SchemaFactory $schemaFactory,
         private ValidatorInterface $validator,
@@ -98,7 +98,7 @@ readonly class ValidRequestResolver implements ValueResolverInterface
             return [];
         }
 
-        $dto = $this->objectCollector->collect($reflectionClass, $data, $validRequestAttribute);
+        $dto = $this->objectHydrator->hydrate($reflectionClass, $data, $validRequestAttribute);
 
         // Вторая валидация для правил, требующих объекты
         $violations = $this->violationTransformer->propertyToField(

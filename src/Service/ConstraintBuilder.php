@@ -100,6 +100,7 @@ final class ConstraintBuilder
             }
 
             if (!$this->checkContainConstraint($propertyConstraints, [Assert\NotBlank::class, Assert\NotNull::class])) {
+                // defaultValue === null у not nullable типа означает, что значения по умолчанию нет
                 if (!$type->nullable && $node->defaultValue === null) {
                     $propertyConstraints[] = new Assert\NotNull();
                 }

@@ -181,14 +181,17 @@ class SchemaFactory
 
     private function getPropertyDefaultValue(ReflectionProperty $property): mixed
     {
-        // Promoted property
         foreach ($property->getDeclaringClass()->getConstructor()?->getParameters() ?? [] as $param) {
-            if ($param->getName() === $property->getName() && $param->isPromoted()) {
+            // Конечно, имя параметра конструктора не всегда равно имени свойства класса,
+            // но это распространенная практика, особенно при описании DTO классов.
+            // Если они отличаются - то значения по умолчанию не будет и валидатор затребует передать его явно.
+            // Если параметр совпадает с одним свойством по имени, но фактически присваевается другому - будет коллизия,
+            // решить которую эвристически не получится, да это и не особо нужно, потому что пользователь явно делает что-то странное.
+            if ($param->getName() === $property->getName()) {
                 return $param->isDefaultValueAvailable() ? $param->getDefaultValue() : null;
             }
         }
 
-        // Classic property
         return $property->hasDefaultValue() ? $property->getDefaultValue() : null;
     }
 }
