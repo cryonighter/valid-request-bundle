@@ -5,6 +5,7 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 use BackedEnum;
 use ReflectionIntersectionType;
 use ReflectionNamedType;
+use ReflectionParameter;
 use ReflectionProperty;
 use ReflectionUnionType;
 use RuntimeException;
@@ -26,24 +27,24 @@ readonly class PropertyType
         $this->isEnum = !$builtin && is_subclass_of($name, BackedEnum::class);
     }
 
-    public static function create(ReflectionProperty $property): self
+    public static function create(ReflectionProperty|ReflectionParameter $property): self
     {
         $type = $property->getType();
 
-        if (null === $type) {
-            throw new RuntimeException('Properties with undeclared type are not supported');
+        if ($type) {
+            if ($type instanceof ReflectionUnionType || $type instanceof ReflectionIntersectionType) {
+                throw new RuntimeException('Union and intersection types are not supported');
+            }
+
+            // На будущее, вдруг появится 4й тип
+            if (!$type instanceof ReflectionNamedType) {
+                throw new RuntimeException('Only named types are supported');
+            }
+
+            return new self($type->getName(), $type->isBuiltin(), $type->allowsNull());
         }
 
-        if ($type instanceof ReflectionUnionType || $type instanceof ReflectionIntersectionType) {
-            throw new RuntimeException('Union and intersection types are not supported');
-        }
-
-        // На будущее, вдруг появится 4й тип
-        if (!$type instanceof ReflectionNamedType) {
-            throw new RuntimeException('Only named types are supported');
-        }
-
-        return new self($type->getName(), $type->isBuiltin(), $type->allowsNull());
+        return new PropertyType('mixed', true, true);
     }
 
     private function isIterable(): bool

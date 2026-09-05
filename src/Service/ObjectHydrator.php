@@ -4,6 +4,7 @@ namespace Cryonighter\ValidRequestBundle\Service;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Cryonighter\ValidRequestBundle\Schema\PropertyType;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
@@ -113,10 +114,10 @@ readonly class ObjectHydrator
      */
     private function hydrateValue(string $name, mixed $value, ReflectionProperty|ReflectionParameter $property, ValidRequest $validRequest): mixed
     {
-        $type = $property->getType();
+        $type = PropertyType::create($property);
 
         if ($value === null) {
-            if (($type && $type->allowsNull()) || !$type) {
+            if ($type->nullable) {
                 return null;
             }
 
@@ -124,34 +125,31 @@ readonly class ObjectHydrator
                 return $property->getDefaultValue();
             }
 
-            if (in_array($type->getName(), ['array', 'callable'])) {
+            if (in_array($type->name, ['array', 'callable'])) {
                 return [];
             }
         }
 
-        // TODO: если у аргумента нет тайпхинта пока считаем его примитивом, но по хорошему надо резольвить
-        if ($type) {
-            if (!$type->isBuiltin() && is_array($value)) {
-                return $this->hydrate(new ReflectionClass($type->getName()), $value, $validRequest);
+        if (!$type->builtin && is_array($value)) {
+            return $this->hydrate(new ReflectionClass($type->name), $value, $validRequest);
+        }
+
+        if ($type->name === 'array') {
+            // TODO: это не будет работать для обычных (не промоутед) параметров, на которые не вешают аннотацию Assert\All
+            $typeFromAssertAll = $this->reflectionUtilService->getTypeFromAssertAll($property);
+
+            if (is_array($typeFromAssertAll)) {
+                throw new RuntimeException('Array type is not supported');
             }
 
-            if ($type->getName() === 'array') {
-                // TODO: это не будет работать для обычных (не промоутед) параметров, на которые не вешают аннотацию Assert\All
-                $typeFromAssertAll = $this->reflectionUtilService->getTypeFromAssertAll($property);
+            // На null не проверяю, так как null может быть как явно объявленный Assert\Type(null),
+            // что является ошибкой, так и признаком полного отсутствия аттрибута Assert\Type в Assert\All
 
-                if (is_array($typeFromAssertAll)) {
-                    throw new RuntimeException('Array type is not supported');
-                }
-
-                // На null не проверяю, так как null может быть как явно объявленный Assert\Type(null),
-                // что является ошибкой, так и признаком полного отсутствия аттрибута Assert\Type в Assert\All
-
-                if (is_string($typeFromAssertAll) && class_exists($typeFromAssertAll)) {
-                    return array_map(
-                        fn(array $item): object => $this->hydrate(new ReflectionClass($typeFromAssertAll), $item, $validRequest),
-                        $value,
-                    );
-                }
+            if (is_string($typeFromAssertAll) && class_exists($typeFromAssertAll)) {
+                return array_map(
+                    fn(array $item): object => $this->hydrate(new ReflectionClass($typeFromAssertAll), $item, $validRequest),
+                    $value,
+                );
             }
         }
 
