@@ -224,7 +224,11 @@ class SearchRequest
 
 ### Вложенные объекты и массивы объектов
 
-Вложенные объекты разрешаются автоматически по типу свойства.
+Вложенные объекты разрешаются автоматически по типу свойства. Однако если тип можно уточнить при помощи
+атрибута `Assert\Type` из пакета из пакета `symfony/validator`. Это удобно, если тип является интерфейсом,
+абстрактным классом или даже обычным классом, имеющим наследников. А также для типов `object`, `mixed` или
+без указания типа.
+
 Если тип объявлен как nullable — то при отсутствии данных в запросе свойству будет присвоено значение `null`.
 
 Для массивов объектов используйте стандартные атрибуты `Assert\All` и `Assert\Type`,
@@ -267,6 +271,89 @@ class ProfileUserRequest
     ) {}
 }
 ```
+
+### Массивы объектов разных типов
+
+Иногда одно и то же свойство-массив должно содержать экземпляры разных классов в зависимости
+от активной группы валидации. Для этого укажите внутри `Assert\All` несколько `Assert\Type`,
+каждый со своим целевым классом и своей группой. Бандл соберёт массив из инстансов того класса,
+чей `Assert\Type` активен для текущего набора групп.
+
+```php
+use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Symfony\Component\Validator\Constraints as Assert;
+
+class Wizard
+{
+    public function __construct(
+        #[Assert\NotBlank]
+        #[Assert\Length(min: 2, max: 50)]
+        public string $name,
+
+        #[Assert\Range(min: 1, max: 100)]
+        public int $spellPower,
+    ) {}
+}
+
+class Warrior
+{
+    public function __construct(
+        #[Assert\NotBlank]
+        #[Assert\Length(min: 2, max: 50)]
+        public string $name,
+
+        #[Assert\Positive]
+        public int $strength,
+    ) {}
+}
+
+#[ValidRequest]
+class PartyRequest
+{
+    public function __construct(
+        #[Assert\All([
+            new Assert\Type(type: Wizard::class, groups: ['Wizards']),
+            new Assert\Type(type: Warrior::class, groups: ['Warriors']),
+        ])]
+        #[Assert\Valid]
+        public array $party,
+    ) {}
+}
+```
+
+Для группы `Wizards` массив будет собран из объектов `Wizard`,
+а для группы `Warriors` — из объектов `Warrior`:
+
+```php
+#[Route('/party/wizards', methods: [Request::METHOD_POST])]
+public function createWizards(
+    #[ValidRequest(groups: ['Default', 'Wizards'])]
+    PartyRequest $request,
+): Response {
+    // $request->party — массив инстансов Wizard
+}
+
+#[Route('/party/warriors', methods: [Request::METHOD_POST])]
+public function createWarriors(
+    #[ValidRequest(groups: ['Default', 'Warriors'])]
+    PartyRequest $request,
+): Response {
+    // $request->party — массив инстансов Warrior
+}
+```
+
+**Каскадная валидация и группы.**
+Атрибут `Assert\Type` проверяет только тип элемента и не заходит внутрь объекта — за каскадную проверку
+вложенных полей отвечает `Assert\Valid`. Если у полей ваших вложенных классов не указаны группы валидации — они
+по умолчанию находятся в группе `Default`. Поэтому для осуществления каскадной валидации вам стоит либо не указывать
+группы валидации у `Assert\Valid` (как это показано на примере), либо указать группу `Default` явно:
+```php
+#[Assert\Valid(groups: ['Default', 'Wizards, 'Warriors'])]
+public array $party;
+```
+
+Так же не стоит забывать указывать группу `Default` в атрибуте `#[ValidRequest]` (как на примере), чтобы
+валидировались все свойства без явного указания групп. В противном случае валидация для них выполнена будет.
 
 
 ### Атрибут BindRequestParam
@@ -348,7 +435,8 @@ class ProfileUserRequest
 
 ### Группы валидации
 
-Группы валидации передаются через параметр `groups` атрибута `#[ValidRequest]`, аналогично передаче групп напрямую в сервис валидатора:
+Группы валидации передаются через параметр `groups` атрибута `#[ValidRequest]`,
+аналогично передаче групп напрямую в сервис валидатора:
 
 ```php
 #[ValidRequest(groups: ['Default', 'Create'])]
@@ -653,12 +741,12 @@ class UserRequest
 
 ## Limitations
 
-| Limitation                                                                            | Notes                                                                                                                  |
-|---------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| Поддерживаются только типизированные свойства                                         | Свойства без явного типа (`mixed` или без type hint) обрабатываются как примитивы без какого-либо приведения типов     |
-| Проверка на лишние поля в запросе работает только для `payload`-источника             | Для `query`, `headers`, `cookies` и других источников лишние поля не проверяются                                       |
-| `Assert\Type` в `Assert\All` поддерживает только одиночный класс                      | Передача массива типов в `Assert\Type` внутри `Assert\All` не поддерживается                                           |
-| Преобразование типов для `bool`, `int`, `float` работает только для протоколов `form` | Для `application/xml` и `text/xml` поведение не определено и не протестировано                                         |
+| Limitation                                                                            | Notes                                                                                                              |
+|---------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| Поддерживаются только типизированные свойства                                         | Свойства без явного типа (`mixed` или без type hint) обрабатываются как примитивы без какого-либо приведения типов |
+| Проверка на лишние поля в запросе работает только для `payload`-источника             | Для `query`, `headers`, `cookies` и других источников лишние поля не проверяются                                   |
+| `Assert\Type` поддерживает только одиночный класс                                     | Передача массива типов в `Assert\Type` не поддерживается                                                           |
+| Преобразование типов для `bool`, `int`, `float` работает только для протоколов `form` | Для `application/xml` и `text/xml` поведение не определено и не протестировано                                     |
 
 
 ## Сравнение с нативными решениями Symfony

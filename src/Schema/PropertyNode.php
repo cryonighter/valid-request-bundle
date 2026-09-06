@@ -11,10 +11,10 @@ readonly class PropertyNode
     public const string file = __FILE__;
 
     /**
-     * @param BindRequestParam[]  $bindings    All repeatable #[BindRequestParam] of the property (group-agnostic)
-     * @param Constraint[]        $constraints
-     * @param ObjectSchema|null   $nested      Schema of a nested object (always present when type is non-builtin class)
-     * @param ObjectSchema|null   $arrayItem   Schema of array element type resolved from Assert\All + Assert\Type
+     * @param BindRequestParam[]   $bindings    All repeatable #[BindRequestParam] of the property
+     * @param Constraint[]         $constraints Constraints of the properties required for hydration of an object.
+     * @param ObjectSchema|null    $nested      Schema of a nested object (always present when type is non-builtin class)
+     * @param PropertyNestedItem[] $nestedItems  Schemas ofa nested iterable element type resolved from Assert\All + Assert\Type and gruped by validation groups
      */
     public function __construct(
         public string $propertyName,
@@ -22,7 +22,7 @@ readonly class PropertyNode
         public array $bindings,
         public array $constraints,
         public ?ObjectSchema $nested = null,
-        public ?ObjectSchema $arrayItem = null,
+        public array $nestedItems = [],
         public bool $hasAssertValid = false,
         public mixed $defaultValue = null,
     ) {
@@ -42,5 +42,27 @@ readonly class PropertyNode
     public function fieldName(ValidationGroups $groups): string
     {
         return $this->resolveBinding($groups)?->name ?: $this->propertyName;
+    }
+
+    public function getItemSchema(ValidationGroups $requestGroups): ?ObjectSchema
+    {
+        foreach ($this->nestedItems as $item) {
+            if ($requestGroups->intersects($item->groupsAll) && $requestGroups->intersects($item->groupsType) && $item->schemas) {
+                return array_values($item->schemas)[0];
+            }
+        }
+
+        return null;
+    }
+
+    public function getItemSchemaByClassName(ValidationGroups $requestGroups, string $className): ?ObjectSchema
+    {
+        foreach ($this->nestedItems as $item) {
+            if ($requestGroups->intersects($item->groupsAll) && $requestGroups->intersects($item->groupsType) && isset($item->schemas[$className])) {
+                return $item->schemas[$className];
+            }
+        }
+
+        return null;
     }
 }

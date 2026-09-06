@@ -4,7 +4,9 @@ namespace Cryonighter\ValidRequestBundle\Service;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
-use Cryonighter\ValidRequestBundle\Schema\PropertyType;
+use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
+use Cryonighter\ValidRequestBundle\Schema\PropertyNode;
+use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
@@ -14,15 +16,10 @@ use RuntimeException;
 
 readonly class ObjectHydrator
 {
-    public function __construct(
-        private ReflectionUtilService $reflectionUtilService,
-    ) {
-    }
-
     /**
      * @throws ReflectionException
      */
-    public function hydrate(ReflectionClass $reflectionClass, array $data, ValidRequest $validRequest): object
+    public function hydrate(ObjectSchema $schema, ReflectionClass $reflectionClass, array $data, ValidRequest $validRequest): object
     {
         $className = $reflectionClass->getName();
 
@@ -30,7 +27,7 @@ readonly class ObjectHydrator
         $parameters = $constructor?->getParameters();
 
         if ($constructor && $parameters) {
-            $arguments = $this->getConstructorArguments($data, $parameters, $validRequest);
+            $arguments = $this->getConstructorArguments($schema, $data, $parameters, $validRequest);
 
             $data = array_diff_key($data, $arguments);
 
@@ -46,7 +43,7 @@ readonly class ObjectHydrator
         $propertyMap = [];
 
         foreach ($reflectionClass->getProperties() as $property) {
-            $propertyMap[$this->getFieldName($property, $validRequest)] = $property;
+            $propertyMap[$this->getFieldName($property, $validRequest->validationGroups)] = $property;
         }
 
         foreach ($data as $name => $value) {
@@ -60,7 +57,9 @@ readonly class ObjectHydrator
             }
 
             $propertyName = $property->getName();
-            $value = $this->hydrateValue($name, $value, $property, $validRequest);
+            $propertyNode = $schema->properties[$propertyName];
+
+            $value = $this->hydrateValue($name, $value, $propertyNode, $validRequest);
 
             $setter = 'set' . ucfirst($propertyName);
 
@@ -88,22 +87,52 @@ readonly class ObjectHydrator
     }
 
     /**
-     * @param array $payload
-     * @param ReflectionProperty[]|ReflectionParameter[] $parameters
-     * @param ValidRequest $validRequest
+     * @param ObjectSchema          $schema
+     * @param array                 $payload
+     * @param ReflectionParameter[] $parameters
+     * @param ValidRequest          $validRequest
      *
      * @return array
      *
      * @throws ReflectionException
      */
-    private function getConstructorArguments(array $payload, array $parameters, ValidRequest $validRequest): array
+    private function getConstructorArguments(ObjectSchema $schema, array $payload, array $parameters, ValidRequest $validRequest): array
     {
         $arguments = [];
 
         foreach ($parameters as $parameter) {
-            $name = $this->getFieldName($parameter, $validRequest);
+            $name = $this->getFieldName($parameter, $validRequest->validationGroups);
+            $value = $payload[$name] ?? null;
 
-            $arguments[$name] = $this->hydrateValue($name, $payload[$name] ?? null, $parameter, $validRequest);
+            $propertyNode = $schema->getPropertyByRequestName($name, $validRequest->validationGroups);
+
+            // Параметр конструктора не сопоставляется со свойством класса ни по имени, ни по бинду
+            if (!$propertyNode) {
+                if ($value === null) {
+                    if ($parameter->getType()->allowsNull()) {
+                        $arguments[$name] = null;
+
+                        continue;
+                    }
+
+                    if ($parameter->isDefaultValueAvailable()) {
+                        $arguments[$name] = $parameter->getDefaultValue();
+                    }
+
+                    // Наличие этого кейса спорно. Он появился при другой архитектуре и не понятно нужен ли сейчас.
+                    if (in_array($parameter->getType()->getName(), ['array', 'callable'])) {
+                        return [];
+                    }
+
+                    throw new RuntimeException("The '$name' constructor parameter must be non-empty, nullable, or have a default value");
+                }
+
+                $arguments[$name] = $value;
+
+                continue;
+            }
+
+            $arguments[$name] = $this->hydrateValue($name, $value, $propertyNode, $validRequest);
         }
 
         return $arguments;
@@ -112,63 +141,59 @@ readonly class ObjectHydrator
     /**
      * @throws ReflectionException
      */
-    private function hydrateValue(string $name, mixed $value, ReflectionProperty|ReflectionParameter $property, ValidRequest $validRequest): mixed
+    private function hydrateValue(string $name, mixed $value, PropertyNode $propertyNode, ValidRequest $validRequest): mixed
     {
-        $type = PropertyType::create($property);
+        $type = $propertyNode->type;
 
         if ($value === null) {
             if ($type->nullable) {
                 return null;
             }
 
-            if ($property->isDefaultValueAvailable()) {
-                return $property->getDefaultValue();
+            if ($propertyNode->defaultValue) {
+                return $propertyNode->defaultValue;
             }
 
+            // Наличие этого кейса спорно. Он появился при другой архитектуре и не понятно нужен ли сейчас.
             if (in_array($type->name, ['array', 'callable'])) {
                 return [];
             }
         }
 
         if (!$type->builtin && is_array($value)) {
-            return $this->hydrate(new ReflectionClass($type->name), $value, $validRequest);
+            return $this->hydrate($propertyNode->nested, new ReflectionClass($type->name), $value, $validRequest);
         }
 
-        if ($type->name === 'array') {
-            // TODO: это не будет работать для обычных (не промоутед) параметров, на которые не вешают аннотацию Assert\All
-            $typeFromAssertAll = $this->reflectionUtilService->getTypeFromAssertAll($property);
+        if (in_array($type->name, ['array', 'iterable'])) {
+            $itemSchema = $propertyNode->getItemSchema($validRequest->validationGroups);
 
-            if (is_array($typeFromAssertAll)) {
-                throw new RuntimeException('Array type is not supported');
-            }
-
-            // На null не проверяю, так как null может быть как явно объявленный Assert\Type(null),
-            // что является ошибкой, так и признаком полного отсутствия аттрибута Assert\Type в Assert\All
-
-            if (is_string($typeFromAssertAll) && class_exists($typeFromAssertAll)) {
+            if ($itemSchema) {
                 return array_map(
-                    fn(array $item): object => $this->hydrate(new ReflectionClass($typeFromAssertAll), $item, $validRequest),
+                    fn(array $item): object => $this->hydrate($itemSchema, new ReflectionClass($itemSchema->className), $item, $validRequest),
                     $value,
                 );
             }
         }
 
-        return $value ?? throw new RuntimeException("The '$name' property must be non-empty or have a default value");
+        // Валидные nullable кейсы к этому моменту уже отработаны
+        return $value ?? throw new RuntimeException("The '$name' property must be non-empty, nullable or have a default value");
     }
 
-    private function getFieldName(ReflectionProperty|ReflectionParameter $property, ValidRequest $validRequest): string
+    private function getFieldName(ReflectionProperty|ReflectionParameter $property, ValidationGroups $requestGroups): string
     {
-        return $this->getBindRequestParamByGroups($property, $validRequest)?->name ?: $property->getName();
+        return $this->getBindRequestParamByGroups($property, $requestGroups)?->name ?: $property->getName();
     }
 
-    private function getBindRequestParamByGroups(ReflectionProperty|ReflectionParameter $property, ValidRequest $validRequest): ?BindRequestParam
-    {
+    private function getBindRequestParamByGroups(
+        ReflectionProperty|ReflectionParameter $property,
+        ValidationGroups $requestGroups,
+    ): ?BindRequestParam {
         return array_find(
             array_map(
                 fn(ReflectionAttribute $attribute): BindRequestParam => $attribute->newInstance(),
                 $property->getAttributes(BindRequestParam::class),
             ),
-            fn(BindRequestParam $bindPayload): bool => $validRequest->validationGroups->intersects($bindPayload->validationGroups),
+            fn(BindRequestParam $bindPayload): bool => $requestGroups->intersects($bindPayload->validationGroups),
         );
     }
 }

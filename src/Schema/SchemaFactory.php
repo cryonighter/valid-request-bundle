@@ -4,13 +4,12 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Schema\Exception\CyclicSchemaException;
-use Cryonighter\ValidRequestBundle\Service\ReflectionUtilService;
+use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use DateTimeInterface;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionProperty;
-use RuntimeException;
 use Symfony\Component\Config\ConfigCache;
 use Symfony\Component\Config\Resource\FileResource;
 use Symfony\Component\Validator\Constraint;
@@ -22,7 +21,6 @@ class SchemaFactory
     private array $memory = [];
 
     public function __construct(
-        private readonly ReflectionUtilService $reflectionUtilService,
         private readonly string $cacheDir,
         private readonly bool $debug,
     ) {
@@ -94,24 +92,40 @@ class SchemaFactory
             $type = PropertyType::create($property);
 
             $nested = null;
-            $arrayItem = null;
+            $nestedItemSchemas = [];
+
+            $constraints = $this->collectConstraints($property, $type);
 
             if (!$type->builtin && !$type->iterable && !$this->isEmbeddedClass($type->name)) {
                 $nested = $this->create($type->name, $classes, $files);
             } elseif ($type->iterable) {
-                // TODO: сюда могут попасть не только коллекции, но и пользовательские
-                // TODO: объекты, итерирующиеся по собственным полям. Пока игнорируем этот кейс.
-                $itemType = $this->reflectionUtilService->getTypeFromAssertAll($property);
+                // TODO: сюда могут попасть не только коллекции, но и пользовательские объекты, итерирующиеся по собственным полям.
+                // Пока игнорируем этот кейс.
 
-                if (is_array($itemType)) {
-                    throw new RuntimeException('Array type is not supported');
-                }
+                foreach ($constraints as $constraint) {
+                    if (!$constraint instanceof Assert\All) {
+                        continue;
+                    }
 
-                // На null не проверяю, так как null может быть как явно объявленный Assert\Type(null),
-                // что является ошибкой, так и признаком полного отсутствия аттрибута Assert\Type в Assert\All
+                    foreach ($constraint->constraints as $subConstraint) {
+                        if ($subConstraint instanceof Assert\Type) {
+                            $types = is_array($subConstraint->type) ? $subConstraint->type : [$subConstraint->type];
+                            $schemas = [];
 
-                if (is_string($itemType) && class_exists($itemType)) {
-                    $arrayItem = $this->create($itemType, $classes, $files);
+                            foreach ($types as $itemType) {
+                                if (is_string($itemType) && class_exists($itemType)) {
+                                    $schemas[$itemType] = $this->create($itemType, $classes, $files);
+                                }
+                            }
+
+                            $nestedItemSchemas[] = new PropertyNestedItem(
+                                groupsAll: new ValidationGroups($constraint->groups),
+                                groupsType: new ValidationGroups($subConstraint->groups),
+                                types: is_array($subConstraint->type) ? $subConstraint->type : [$subConstraint->type],
+                                schemas: $schemas,
+                            );
+                        }
+                    }
                 }
             }
 
@@ -119,9 +133,9 @@ class SchemaFactory
                 propertyName: $property->getName(),
                 type: $type,
                 bindings: $this->collectBindings($property),
-                constraints: $this->buildConstraints($property, $type),
+                constraints: $constraints,
                 nested: $nested,
-                arrayItem: $arrayItem,
+                nestedItems: $nestedItemSchemas,
                 hasAssertValid: !empty($property->getAttributes(Assert\Valid::class)),
                 defaultValue: $this->getPropertyDefaultValue($property),
             );
@@ -144,7 +158,7 @@ class SchemaFactory
     /**
      * @return Constraint[]
      */
-    private function buildConstraints(ReflectionProperty $property, PropertyType $type): array
+    private function collectConstraints(ReflectionProperty $property, PropertyType $type): array
     {
         $constraints = [];
 

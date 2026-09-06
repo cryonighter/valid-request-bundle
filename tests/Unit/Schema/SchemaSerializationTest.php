@@ -3,9 +3,10 @@
 namespace Cryonighter\ValidRequestBundle\Tests\Unit\Schema;
 
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
+use Cryonighter\ValidRequestBundle\Schema\PropertyNestedItem;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
-use Cryonighter\ValidRequestBundle\Service\ReflectionUtilService;
 use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\CheckoutOrderRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\OrderLineRequest;
 use PHPUnit\Framework\TestCase;
 
 class SchemaSerializationTest extends TestCase
@@ -14,7 +15,7 @@ class SchemaSerializationTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->factory = new SchemaFactory(new ReflectionUtilService(), sys_get_temp_dir() . '/vr_schema_test', true);
+        $this->factory = new SchemaFactory(sys_get_temp_dir() . '/vr_schema_test', true);
     }
 
     // =========================================================================
@@ -82,10 +83,16 @@ class SchemaSerializationTest extends TestCase
 
         $this->assertInstanceOf(ObjectSchema::class, $restored);
 
-        $arrayItem = $restored->properties['lines']->arrayItem;
+        $nestedItems = $restored->properties['lines']->nestedItems;
 
-        $this->assertInstanceOf(ObjectSchema::class, $arrayItem);
-        $this->assertArrayHasKey('articleCode', $arrayItem->properties);
+        $this->assertArrayHasKey(0, $nestedItems);
+        $this->assertInstanceOf(PropertyNestedItem::class, $nestedItems[0]);
+
+        $schemas = $nestedItems[0]->schemas;
+
+        $this->assertArrayHasKey(OrderLineRequest::class, $schemas);
+        $this->assertInstanceOf(ObjectSchema::class, $schemas[OrderLineRequest::class]);
+        $this->assertArrayHasKey('articleCode', $schemas[OrderLineRequest::class]->properties);
     }
 
     /**

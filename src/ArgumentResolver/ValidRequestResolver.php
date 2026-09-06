@@ -77,7 +77,7 @@ readonly class ValidRequestResolver implements ValueResolverInterface
                 $schema,
                 $validRequestAttribute,
                 $request,
-                $groups,
+                new ValidationGroups($groups),
                 $argument->isNullable(),
             );
         } catch (ValidationFailedException $exception) {
@@ -98,7 +98,7 @@ readonly class ValidRequestResolver implements ValueResolverInterface
             return [];
         }
 
-        $dto = $this->objectHydrator->hydrate($reflectionClass, $data, $validRequestAttribute);
+        $dto = $this->objectHydrator->hydrate($schema, $reflectionClass, $data, $validRequestAttribute);
 
         // Вторая валидация для правил, требующих объекты
         $violations = $this->violationTransformer->propertyToField(

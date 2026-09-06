@@ -9,6 +9,7 @@ use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
 use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
 use Cryonighter\ValidRequestBundle\Payload\Payload;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
+use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use ReflectionException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
@@ -37,7 +38,7 @@ readonly class PayloadExtractor
         ObjectSchema $schema,
         ValidRequest $validRequestAttribute,
         Request $request,
-        array $groups,
+        ValidationGroups $requestGroups,
         bool $allowedNull,
     ): ?array {
         $payload = Payload::createFromRequest($request, $validRequestAttribute);
@@ -58,14 +59,10 @@ readonly class PayloadExtractor
         $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
             $this->notExpectedFields($payload, $schema, $validRequestAttribute) : [];
 
-        $constraints = $this->constraintBuilder->build(
-            $schema,
-            $validRequestAttribute->validationGroups,
-            $notExpectedFields,
-        );
+        $constraints = $this->constraintBuilder->build($schema, $requestGroups, $notExpectedFields);
 
         $violations = $this->violationTransformer->arrayKeyToObjectKey(
-            $this->validator->validate($data, $constraints, $groups),
+            $this->validator->validate($data, $constraints, $requestGroups->groups),
         );
 
         if ($violations->count() != 0) {
@@ -139,11 +136,13 @@ readonly class PayloadExtractor
             // Если это массив
             if ($type->name == 'array' && is_array($value)) {
                 // Если это массив объектов
-                if ($node->arrayItem !== null) {
+                $itemSchema = $node->getItemSchema($groups);
+
+                if ($itemSchema !== null) {
                     $data[$name] = array_map(
                         fn(mixed $item): mixed => is_array($item)
-                            ? $this->preparePayloadData(new Payload($item, $request, $validRequest), $node->arrayItem)
-                            : $item, // TODO: а надо ли?
+                            ? $this->preparePayloadData(new Payload($item, $request, $validRequest), $itemSchema)
+                            : $item, // Если это не массив - оставляем как есть, валидатор проверит тип и выдаст ошибку
                         $value,
                     );
 

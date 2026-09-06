@@ -19,6 +19,14 @@ readonly class ObjectSchema
     ) {
     }
 
+    public function getPropertyByRequestName(string $name, ValidationGroups $groups): ?PropertyNode
+    {
+        return array_find(
+            $this->properties,
+            fn(PropertyNode $property): bool => $property->fieldName($groups) === $name,
+        );
+    }
+
     public function getObjectStruct(ValidRequest $validRequest): array
     {
         $data = [];

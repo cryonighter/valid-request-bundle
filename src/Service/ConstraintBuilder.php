@@ -13,18 +13,18 @@ use Symfony\Component\Validator\Constraints as Assert;
 
 final class ConstraintBuilder
 {
-    public function build(ObjectSchema $schema, ValidationGroups $groups, array $notExpectedFields): ExtendedCollection
+    public function build(ObjectSchema $schema, ValidationGroups $requestGroups, array $notExpectedFields): ExtendedCollection
     {
         $constraints = [];
 
         foreach ($schema->properties as $node) {
-            $name = $node->fieldName($groups);
+            $name = $node->fieldName($requestGroups);
             $type = $node->type;
 
             if (!$type->builtin && $this->checkContainConstraint($node->constraints, [Assert\Valid::class])) {
                 $constraints[$name] = $this->build(
                     $node->nested,
-                    $groups,
+                    $requestGroups,
                     is_array($notExpectedFields[$name] ?? null) ? $notExpectedFields[$name] : [],
                 );
 
@@ -54,7 +54,13 @@ final class ConstraintBuilder
                                     $constraint->groups,
                                     $constraint->payload,
                                 );
-                                $allConstraints[] = $this->build($node->arrayItem, $groups, []);
+
+                                $itemSchema = $node->getItemSchemaByClassName($requestGroups, $constraint->type);
+
+                                // Если null - значит группа констрейнта отличается от группы запроса и валидация не нужна
+                                if ($itemSchema) {
+                                    $allConstraints[] = $this->build($itemSchema, $requestGroups, []);
+                                }
                             } elseif ($constraint instanceof Assert\Type && is_string($constraint->type) && interface_exists($constraint->type)) {
                                 throw new RuntimeException('Interface type is not supported');
                             } elseif ($constraint instanceof Assert\Type && !is_string($constraint->type)) {
