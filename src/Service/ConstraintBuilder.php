@@ -21,11 +21,13 @@ final class ConstraintBuilder
             $name = $node->fieldName($requestGroups);
             $type = $node->type;
 
+            $notExpected = is_array($notExpectedFields[$name] ?? null) ? $notExpectedFields[$name] : [];
+
             if (!$type->builtin && $this->checkContainConstraint($node->constraints, [Assert\Valid::class])) {
                 $constraints[$name] = $this->build(
                     $node->nested,
                     $requestGroups,
-                    is_array($notExpectedFields[$name] ?? null) ? $notExpectedFields[$name] : [],
+                    $notExpected,
                 );
 
                 continue;
@@ -59,7 +61,9 @@ final class ConstraintBuilder
 
                                 // Если null - значит группа констрейнта отличается от группы запроса и валидация не нужна
                                 if ($itemSchema) {
-                                    $allConstraints[] = $this->build($itemSchema, $requestGroups, []);
+                                    $notExpected = array_merge(...$notExpected);
+
+                                    $allConstraints[] = $this->build($itemSchema, $requestGroups, $notExpected);
                                 }
                             } elseif ($constraint instanceof Assert\Type && is_string($constraint->type) && interface_exists($constraint->type)) {
                                 throw new RuntimeException('Interface type is not supported');
@@ -118,13 +122,23 @@ final class ConstraintBuilder
             }
         }
 
+        // Есть кейсы, где extraFields возможны, поэтому случаи,
+        // где они недопустимы, я указываю вручную здесь
         foreach ($notExpectedFields as $name => $value) {
+            // Массивы считаем подструктурами, для них NoExtraFields уже установлены в рекурсивных вызовах
             if (!is_array($value)) {
                 $constraints[$name] = new NoExtraFields();
             }
         }
 
-        return new ExtendedCollection($constraints, allowExtraFields: true);
+        // Я вынужден тут поставить allowMissingFields: true, так как Collection оборачивает все $constraints
+        // в Assert\Required, и для NoExtraFields получается парадоксальная ситуация - поле с одной стороны
+        // должно быть (требование Required), в с другой его не должно быть (требование NoExtraFields).
+        // Но это приводит к тому, что я никогда не получу сообщения "This field is missing",
+        // в только "This value should not be blank". Это, с одной стороны, соответствует
+        // концепции "запрос валидируется так, будто это уже собранный объект", с другой
+        // конечно же хотелось бы отличать кейсы "поля нет" и "поле пустое". Но пока так.
+        return new ExtendedCollection($constraints, allowExtraFields: true, allowMissingFields: true);
     }
 
     /**

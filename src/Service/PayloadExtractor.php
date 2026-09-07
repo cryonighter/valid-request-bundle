@@ -15,7 +15,6 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use function Cryonighter\ValidRequestBundle\array_diff_key_recursive;
 use function Cryonighter\ValidRequestBundle\empty_data_recursive;
 
 readonly class PayloadExtractor
@@ -57,7 +56,7 @@ readonly class PayloadExtractor
         }
 
         $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
-            $this->notExpectedFields($payload, $schema, $validRequestAttribute) : [];
+            $this->notExpectedFields($payload->toArray(), $schema->getObjectStruct($requestGroups)) : [];
 
         $constraints = $this->constraintBuilder->build($schema, $requestGroups, $notExpectedFields);
 
@@ -188,8 +187,30 @@ readonly class PayloadExtractor
         return array_merge($payload->toArray(), $data);
     }
 
-    private function notExpectedFields(Payload $payload, ObjectSchema $schema, ValidRequest $validRequest): array
+    private function notExpectedFields(array $payload, array $struct): array
     {
-        return array_diff_key_recursive($payload->toArray(), $schema->getObjectStruct($validRequest));
+        $difference = array_diff_key($payload, $struct);
+
+        foreach ($payload as $key => $value) {
+            if (array_key_exists($key, $struct) && is_array($value)) {
+                if (is_array($struct[$key])) {
+                    $isArrayObjectsStruct = array_is_list($struct[$key]) && count($struct[$key]) === 1;
+
+                    if ($isArrayObjectsStruct) {
+                        $struct[$key] = array_fill(0, count($value), $struct[$key][0]);
+                    }
+
+                    $recursiveDiff = $this->notExpectedFields($value, $struct[$key]);
+
+                    if (!empty($recursiveDiff)) {
+                        $difference[$key] = $recursiveDiff;
+                    }
+                } else {
+                    $difference[$key] = $value;
+                }
+            }
+        }
+
+        return $difference;
     }
 }

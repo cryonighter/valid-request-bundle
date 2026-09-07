@@ -100,6 +100,48 @@ class AllConstraintsTest extends AbstractWebTestCase
         $this->assertContains('party[0].spellPower', $paths);
     }
 
+    /**
+     * Группа Wizards с объектами Warrior и Archer:
+     * срабатывает ошибка валидации, spellPower не задан.
+     */
+    public function testTypeGroupsWizardsInvalidElementReceivesViolation1(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'POST',
+            '/all/type-groups/wizards',
+            [
+                'party' => [
+                    ['name' => 'Merlin', 'spellPower' => 80],
+                    ['name' => 'Conan', 'strength' => 42],
+                    ['name' => 'Robin Hood', 'agility' => 72],
+                    ['name' => 'X'],
+                    [],
+                ],
+            ],
+        );
+
+        $this->assertResponseStatusCodeSame(422);
+
+        $data = $this->getJsonResponse($browser);
+
+        $paths = array_column($data['errors'], 'property');
+
+        // Для Warrior
+        $this->assertContains('party[1].spellPower', $paths); // Должно быть, но его нет
+        $this->assertContains('party[1].strength', $paths); // Не должно быть, но оно есть
+
+        // Для Archer
+        $this->assertContains('party[2].spellPower', $paths); // Должно быть, но его нет
+        $this->assertContains('party[2].agility', $paths); // Не должно быть, но оно есть
+
+        // Для X (объект еще не сформирован, поэтому длянна name не валидируется)
+        $this->assertContains('party[3].spellPower', $paths); // Должно быть, но его нет
+
+        $this->assertContains('party[4].name', $paths); // Должно быть, но его нет
+        $this->assertContains('party[4].spellPower', $paths); // Должно быть, но его нет
+    }
+
     // =========================================================================
     // Кейс 2: два Assert\All (каждый в своей группе), внутри Assert\Type без группы.
     // Assert\Type наследует группу от родительского Assert\All.

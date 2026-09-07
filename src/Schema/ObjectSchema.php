@@ -2,7 +2,6 @@
 
 namespace Cryonighter\ValidRequestBundle\Schema;
 
-use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 
 readonly class ObjectSchema
@@ -27,16 +26,28 @@ readonly class ObjectSchema
         );
     }
 
-    public function getObjectStruct(ValidRequest $validRequest): array
+    public function getObjectStruct(ValidationGroups $groups): array
     {
         $data = [];
 
         foreach ($this->properties as $node) {
-            $name = $node->fieldName($validRequest->validationGroups);
+            $name = $node->fieldName($groups);
 
-            $data[$name] = $node->nested !== null
-                ? $node->nested->getObjectStruct($validRequest)
-                : $node->type->name;
+            if ($node->nested !== null) {
+                $data[$name] = $node->nested->getObjectStruct($groups);
+
+                continue;
+            }
+
+            $itemSchema = $node->getItemSchema($groups);
+
+            if ($itemSchema) {
+                $data[$name] = [$itemSchema->getObjectStruct($groups)];
+
+                continue;
+            }
+
+            $data[$name] = $node->type->name;
         }
 
         return $data;
@@ -47,9 +58,21 @@ readonly class ObjectSchema
         $data = [];
 
         foreach ($this->properties as $node) {
-            $data[$node->propertyName] = $node->nested !== null
-                ? $node->nested->getObjectMap($groups)
-                : $node->fieldName($groups);
+            if ($node->nested !== null) {
+                $data[$node->propertyName] = $node->nested->getObjectMap($groups);
+
+                continue;
+            }
+
+            $itemSchema = $node->getItemSchema($groups);
+
+            if ($itemSchema) {
+                $data[$node->propertyName] = [$itemSchema->getObjectMap($groups)];
+
+                continue;
+            }
+
+            $data[$node->propertyName] = $node->fieldName($groups);
         }
 
         return $data;
