@@ -98,7 +98,7 @@ readonly class ValidRequestResolver implements ValueResolverInterface
             return [];
         }
 
-        $dto = $this->objectHydrator->hydrate($schema, $reflectionClass, $data, $validRequestAttribute);
+        $dto = $this->objectHydrator->hydrate($schema, $data, $validRequestAttribute);
 
         // Вторая валидация для правил, требующих объекты
         $violations = $this->violationTransformer->propertyToField(

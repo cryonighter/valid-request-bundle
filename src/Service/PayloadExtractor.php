@@ -116,18 +116,18 @@ readonly class PayloadExtractor
                 continue;
             }
 
-            $hasAssertValid = $node->hasAssertValid;
+            $hasAssertValid = $node->hasValidConstraint($groups);
 
             // Если это невалидируемый объект или nullable объект - то внутреннюю структуру инициализировать не нужно
-            if ($value === null && !$type->builtin && ($type->nullable || !$hasAssertValid)) {
+            if ($value === null && $type->isObject && ($type->nullable || !$hasAssertValid)) {
                 $data[$name] = null;
 
                 continue;
             }
 
             // Если это валидируемый not nullable объект и данные являются массивом или отсутствуют - инициализируем внутреннюю структуру
-            if (!$type->builtin && $hasAssertValid && (is_array($value) || $value === null)) {
-                $data[$name] = $this->preparePayloadData($payload->nested($name), $node->nested);
+            if ($type->isObject && $hasAssertValid && (is_array($value) || $value === null)) {
+                $data[$name] = $this->preparePayloadData($payload->nested($name), $node->getNestedSchema($groups));
 
                 continue;
             }

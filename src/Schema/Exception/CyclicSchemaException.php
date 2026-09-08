@@ -2,9 +2,9 @@
 
 namespace Cryonighter\ValidRequestBundle\Schema\Exception;
 
-use RuntimeException;
+use Cryonighter\ValidRequestBundle\Exception\ValidRequestException;
 
-final class CyclicSchemaException extends RuntimeException
+final class CyclicSchemaException extends ValidRequestException
 {
     /**
      * @param class-string[] $path

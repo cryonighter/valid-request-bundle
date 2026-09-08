@@ -19,9 +19,10 @@ readonly class ObjectHydrator
     /**
      * @throws ReflectionException
      */
-    public function hydrate(ObjectSchema $schema, ReflectionClass $reflectionClass, array $data, ValidRequest $validRequest): object
+    public function hydrate(ObjectSchema $schema, array $data, ValidRequest $validRequest): object
     {
-        $className = $reflectionClass->getName();
+        $className = $schema->className;
+        $reflectionClass = new ReflectionClass($className);
 
         $constructor = $reflectionClass->getConstructor();
         $parameters = $constructor?->getParameters();
@@ -160,23 +161,39 @@ readonly class ObjectHydrator
             }
         }
 
-        if (!$type->builtin && is_array($value)) {
-            return $this->hydrate($propertyNode->nested, new ReflectionClass($type->name), $value, $validRequest);
+        if ($type->isObject || $type->name === 'mixed') {
+            $nestedSchema = $propertyNode->getNestedSchema($validRequest->validationGroups);
+
+            // Типы "object" и "mixed" могут как иметь схему и быть объектами, так и не иметь и быть примитивами.
+            // Не встроенные типы схему иметь обязаны, если ее по каким то причинам нет - бросаем исключение.
+            // Если значение уже является объектом (например, его уже построил кастер) - пропускаем
+            if (($nestedSchema || !$type->builtin) && !is_object($value)) {
+                // Данные уже провалидированы, так что такое вряд ли может быть. Но на всякий случай добавлю.
+                if (!is_array($value)) {
+                    throw new RuntimeException("Hydrating an object requires a list of its properties as an array, not a " . gettype($value));
+                }
+
+                if (!$nestedSchema) {
+                    throw new RuntimeException("Unable to resolve class for param '$name'");
+                }
+
+                return $this->hydrate($nestedSchema, $value, $validRequest);
+            }
         }
 
-        if (in_array($type->name, ['array', 'iterable'])) {
+        if (in_array($type->name, ['array', 'iterable']) && !is_object($value)) {
             $itemSchema = $propertyNode->getItemSchema($validRequest->validationGroups);
 
             if ($itemSchema) {
                 return array_map(
-                    fn(array $item): object => $this->hydrate($itemSchema, new ReflectionClass($itemSchema->className), $item, $validRequest),
-                    $value,
+                    fn(array $item): object => $this->hydrate($itemSchema, $item, $validRequest),
+                    is_array($value) ? $value : iterator_to_array($value),
                 );
             }
         }
 
         // Валидные nullable кейсы к этому моменту уже отработаны
-        return $value ?? throw new RuntimeException("The '$name' property must be non-empty, nullable or have a default value");
+        return $value ?? throw new RuntimeException("The '$propertyNode->propertyName' property must be non-empty, nullable or have a default value");
     }
 
     private function getFieldName(ReflectionProperty|ReflectionParameter $property, ValidationGroups $requestGroups): string

@@ -10,10 +10,13 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionProperty;
+use RuntimeException;
+use stdClass;
 use Symfony\Component\Config\ConfigCache;
 use Symfony\Component\Config\Resource\FileResource;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Constraints\GroupSequence;
 
 class SchemaFactory
 {
@@ -91,13 +94,33 @@ class SchemaFactory
 
             $type = PropertyType::create($property);
 
-            $nested = null;
+            $nestedSchemas = [];
             $nestedItemSchemas = [];
 
             $constraints = $this->collectConstraints($property, $type);
 
-            if (!$type->builtin && !$type->iterable && !$this->isEmbeddedClass($type->name)) {
-                $nested = $this->create($type->name, $classes, $files);
+            if (($type->isObject || $type->name === 'mixed') && !$type->iterable && !$this->isEmbeddedClass($type->name)) {
+                foreach ($constraints as $constraint) {
+                    if ($constraint instanceof Assert\Type) {
+                        $nestedSchemas[] = $this->createNestedSchemaFromType($constraint, [], $classes, $files);
+                    }
+                }
+
+                // Если типы через Assert\Type не указаны или покрывают не все кейсы - используем дефорт по типу свойства.
+                // Если он уже покрыт через Assert\Type - ничего страшного, продублируем (это проще, чем искать).
+                $schemas = [];
+
+                // TODO: тест на stdClass
+                if ($type->name !== 'mixed' && $type->name !== 'object' && $type->name !== stdClass::class) {
+                    $schemas[$type->name] = $this->create($type->name, $classes, $files);
+                }
+
+                $nestedSchemas[] = new PropertyNestedItem(
+                    groupsAll: new ValidationGroups([]),
+                    groupsType: new ValidationGroups(['Default']),
+                    types: [$type->name],
+                    schemas: $schemas,
+                );
             } elseif ($type->iterable) {
                 // TODO: сюда могут попасть не только коллекции, но и пользовательские объекты, итерирующиеся по собственным полям.
                 // Пока игнорируем этот кейс.
@@ -109,21 +132,7 @@ class SchemaFactory
 
                     foreach ($constraint->constraints as $subConstraint) {
                         if ($subConstraint instanceof Assert\Type) {
-                            $types = is_array($subConstraint->type) ? $subConstraint->type : [$subConstraint->type];
-                            $schemas = [];
-
-                            foreach ($types as $itemType) {
-                                if (is_string($itemType) && class_exists($itemType)) {
-                                    $schemas[$itemType] = $this->create($itemType, $classes, $files);
-                                }
-                            }
-
-                            $nestedItemSchemas[] = new PropertyNestedItem(
-                                groupsAll: new ValidationGroups($constraint->groups),
-                                groupsType: new ValidationGroups($subConstraint->groups),
-                                types: is_array($subConstraint->type) ? $subConstraint->type : [$subConstraint->type],
-                                schemas: $schemas,
-                            );
+                            $nestedItemSchemas[] = $this->createNestedSchemaFromType($subConstraint, $constraint->groups, $classes, $files);
                         }
                     }
                 }
@@ -134,14 +143,13 @@ class SchemaFactory
                 type: $type,
                 bindings: $this->collectBindings($property),
                 constraints: $constraints,
-                nested: $nested,
+                nested: $nestedSchemas,
                 nestedItems: $nestedItemSchemas,
-                hasAssertValid: !empty($property->getAttributes(Assert\Valid::class)),
                 defaultValue: $this->getPropertyDefaultValue($property),
             );
         }
 
-        return new ObjectSchema($className, $nodes);
+        return new ObjectSchema($className, $nodes, ($reflectionClass->isAbstract() || $reflectionClass->isInterface()));
     }
 
     /**
@@ -162,7 +170,7 @@ class SchemaFactory
     {
         $constraints = [];
 
-        if (!$type->builtin || $type->iterable) {
+        if ($type->isObject || $type->iterable || $type->name === 'mixed') {
             foreach ($property->getAttributes(Assert\Valid::class) as $validConstraint) {
                 $constraints[] = $validConstraint->newInstance();
             }
@@ -183,6 +191,32 @@ class SchemaFactory
         }
 
         return $constraints;
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    private function createNestedSchemaFromType(
+        Assert\Type $constraint,
+        string|GroupSequence|array|null $groupsAll,
+        array $classes,
+        array &$files
+    ): PropertyNestedItem {
+        $types = is_array($constraint->type) ? $constraint->type : [$constraint->type];
+        $schemas = [];
+
+        foreach ($types as $itemType) {
+            if (is_string($itemType) && class_exists($itemType)) {
+                $schemas[$itemType] = $this->create($itemType, $classes, $files);
+            }
+        }
+
+        return new PropertyNestedItem(
+            groupsAll: new ValidationGroups($groupsAll),
+            groupsType: new ValidationGroups($constraint->groups),
+            types: is_array($constraint->type) ? $constraint->type : [$constraint->type],
+            schemas: $schemas,
+        );
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace Cryonighter\ValidRequestBundle\Service;
 
+use Cryonighter\ValidRequestBundle\Exception\ValidRequestException;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use Cryonighter\ValidRequestBundle\Validator\ExtendedCollection;
@@ -23,14 +24,24 @@ final class ConstraintBuilder
 
             $notExpected = is_array($notExpectedFields[$name] ?? null) ? $notExpectedFields[$name] : [];
 
-            if (!$type->builtin && $this->checkContainConstraint($node->constraints, [Assert\Valid::class])) {
-                $constraints[$name] = $this->build(
-                    $node->nested,
-                    $requestGroups,
-                    $notExpected,
-                );
+            if (($type->isObject || $type->name === 'mixed') && $node->hasValidConstraint($requestGroups)) {
+                $nestedSchema = $node->getNestedSchema($requestGroups);
 
-                continue;
+                if ($nestedSchema) {
+                    if ($nestedSchema->isAbstract) {
+                        throw new ValidRequestException(
+                            "Cannot instantiate an abstract class or interface $nestedSchema->className in property $schema->className::$node->propertyName."
+                        );
+                    }
+
+                    $constraints[$name] = $this->build(
+                        $nestedSchema,
+                        $requestGroups,
+                        $notExpected,
+                    );
+
+                    continue;
+                }
             }
 
             $alls = array_filter($node->constraints, fn(Constraint $constraint): bool => $constraint instanceof Assert\All);

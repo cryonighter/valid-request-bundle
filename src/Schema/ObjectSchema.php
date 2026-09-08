@@ -15,6 +15,7 @@ readonly class ObjectSchema
     public function __construct(
         public string $className,
         public array $properties,
+        public bool $isAbstract,
     ) {
     }
 
@@ -33,8 +34,10 @@ readonly class ObjectSchema
         foreach ($this->properties as $node) {
             $name = $node->fieldName($groups);
 
-            if ($node->nested !== null) {
-                $data[$name] = $node->nested->getObjectStruct($groups);
+            $nestedSchema = $node->getNestedSchema($groups);
+
+            if ($nestedSchema) {
+                $data[$name] = $nestedSchema->getObjectStruct($groups);
 
                 continue;
             }
@@ -58,8 +61,10 @@ readonly class ObjectSchema
         $data = [];
 
         foreach ($this->properties as $node) {
-            if ($node->nested !== null) {
-                $data[$node->propertyName] = $node->nested->getObjectMap($groups);
+            $nestedSchema = $node->getNestedSchema($groups);
+
+            if ($nestedSchema) {
+                $data[$node->propertyName] = $nestedSchema->getObjectMap($groups);
 
                 continue;
             }

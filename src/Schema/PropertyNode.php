@@ -5,6 +5,7 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use Symfony\Component\Validator\Constraint;
+use Symfony\Component\Validator\Constraints as Assert;
 
 readonly class PropertyNode
 {
@@ -13,17 +14,16 @@ readonly class PropertyNode
     /**
      * @param BindRequestParam[]   $bindings    All repeatable #[BindRequestParam] of the property
      * @param Constraint[]         $constraints Constraints of the properties required for hydration of an object.
-     * @param ObjectSchema|null    $nested      Schema of a nested object (always present when type is non-builtin class)
-     * @param PropertyNestedItem[] $nestedItems  Schemas ofa nested iterable element type resolved from Assert\All + Assert\Type and gruped by validation groups
+     * @param PropertyNestedItem[] $nested      Schemas of a nested object type resolved from Assert\Type and gruped by validation groups
+     * @param PropertyNestedItem[] $nestedItems Schemas of a nested iterable element type resolved from Assert\All + Assert\Type and gruped by validation groups
      */
     public function __construct(
         public string $propertyName,
         public PropertyType $type,
         public array $bindings,
         public array $constraints,
-        public ?ObjectSchema $nested = null,
+        public array $nested = [],
         public array $nestedItems = [],
-        public bool $hasAssertValid = false,
         public mixed $defaultValue = null,
     ) {
     }
@@ -42,6 +42,28 @@ readonly class PropertyNode
     public function fieldName(ValidationGroups $groups): string
     {
         return $this->resolveBinding($groups)?->name ?: $this->propertyName;
+    }
+
+    public function hasValidConstraint(ValidationGroups $requestGroups): bool
+    {
+        return array_any(
+            array_filter(
+                $this->constraints,
+                fn(Constraint $constraint): bool => $constraint instanceof Assert\Valid,
+            ),
+            fn(Assert\Valid $constraint): bool => $requestGroups->intersects(new ValidationGroups($constraint->groups)),
+        );
+    }
+
+    public function getNestedSchema(ValidationGroups $requestGroups): ?ObjectSchema
+    {
+        foreach ($this->nested as $item) {
+            if ($requestGroups->intersects($item->groupsType) && $item->schemas) {
+                return array_values($item->schemas)[0];
+            }
+        }
+
+        return null;
     }
 
     public function getItemSchema(ValidationGroups $requestGroups): ?ObjectSchema

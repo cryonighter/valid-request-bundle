@@ -6,6 +6,8 @@ use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\PropertyNestedItem;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
 use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\CheckoutOrderRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\DeliveryAddressRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\GiftWrapRequest;
 use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\OrderLineRequest;
 use PHPUnit\Framework\TestCase;
 
@@ -69,8 +71,17 @@ class SchemaSerializationTest extends TestCase
 
         $nested = $restored->properties['deliveryAddress']->nested;
 
-        $this->assertInstanceOf(ObjectSchema::class, $nested);
-        $this->assertArrayHasKey('postalCode', $nested->properties);
+        $this->assertCount(1, $nested);
+        $this->assertArrayHasKey(0, $nested);
+
+        $this->assertContains(DeliveryAddressRequest::class, $nested[0]->types);
+
+        $schemas = $nested[0]->schemas;
+
+        $this->assertCount(1, $schemas);
+        $this->assertArrayHasKey(DeliveryAddressRequest::class, $schemas);
+        $this->assertInstanceOf(ObjectSchema::class, $schemas[DeliveryAddressRequest::class]);
+        $this->assertArrayHasKey('postalCode', $schemas[DeliveryAddressRequest::class]->properties);
     }
 
     /**
@@ -104,6 +115,15 @@ class SchemaSerializationTest extends TestCase
         $restored = unserialize(serialize($this->factory->create(CheckoutOrderRequest::class)));
 
         $this->assertInstanceOf(ObjectSchema::class, $restored);
-        $this->assertInstanceOf(ObjectSchema::class, $restored->properties['giftWrap']->nested);
+
+        $nested = $restored->properties['giftWrap']->nested;
+
+        $this->assertCount(1, $nested);
+        $this->assertArrayHasKey(0, $nested);
+
+        $schemas = $nested[0]->schemas;
+
+        $this->assertArrayHasKey(GiftWrapRequest::class, $schemas);
+        $this->assertInstanceOf(ObjectSchema::class, $schemas[GiftWrapRequest::class]);
     }
 }

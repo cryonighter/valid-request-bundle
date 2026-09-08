@@ -17,6 +17,7 @@ readonly class PropertyType
 
     public bool $iterable;
     public bool $isEnum;
+    public bool $isObject;
 
     public function __construct(
         public string $name,
@@ -25,6 +26,7 @@ readonly class PropertyType
     ) {
         $this->iterable = $this->isIterable();
         $this->isEnum = !$builtin && is_subclass_of($name, BackedEnum::class);
+        $this->isObject = !$builtin || $this->name === 'object';
     }
 
     public static function create(ReflectionProperty|ReflectionParameter $property): self
