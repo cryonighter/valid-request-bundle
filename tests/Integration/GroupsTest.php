@@ -319,4 +319,85 @@ class GroupsTest extends AbstractWebTestCase
 
         $this->assertContains('name', $paths);
     }
+
+    // =========================================================================
+    // MultiBindRequest: два BindRequestParam на одном свойстве —
+    // имя и источник выбираются по активной группе
+    // =========================================================================
+
+    /**
+     * Группа Web: активен BindRequestParam(name: 'access_token', source: query).
+     * Токен берётся из query-параметра access_token.
+     */
+    public function testWebGroupTakesTokenFromQueryParam(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request('GET', '/multi-bind/web?access_token=secret-token-123');
+
+        $this->assertResponseIsSuccessful();
+
+        $data = $this->getJsonResponse($browser);
+
+        $this->assertSame('secret-token-123', $data['token']);
+    }
+
+    /**
+     * Группа Web: заголовок X-Api-Token (имя/источник другой группы) игнорируется,
+     * query-параметр access_token отсутствует — violation для token.
+     */
+    public function testWebGroupIgnoresApiHeaderSource(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'GET',
+            '/multi-bind/web',
+            server: ['HTTP_X_API_TOKEN' => 'secret-token-123'],
+        );
+
+        $this->assertResponseStatusCodeSame(422);
+
+        $data = $this->getJsonResponse($browser);
+
+        $paths = array_column($data['errors'], 'property');
+
+        $this->assertContains('access_token', $paths);
+    }
+
+    /**
+     * Группа Api: активен BindRequestParam(name: 'X-Api-Token', source: headers).
+     * Токен берётся из заголовка X-Api-Token.
+     */
+    public function testApiGroupTakesTokenFromHeader(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'GET',
+            '/multi-bind/api',
+            server: ['HTTP_X_API_TOKEN' => 'secret-token-123'],
+        );
+
+        $this->assertResponseIsSuccessful();
+
+        $data = $this->getJsonResponse($browser);
+
+        $this->assertSame('secret-token-123', $data['token']);
+    }
+
+    /**
+     * Группа Api: query-параметр access_token (имя/источник другой группы) игнорируется,
+     * заголовок X-Api-Token отсутствует — violation для token.
+     */
+    public function testApiGroupIgnoresQueryParamSource(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request('GET', '/multi-bind/api?access_token=secret-token-123');
+
+        $this->assertResponseStatusCodeSame(422);
+
+        $data = $this->getJsonResponse($browser);
+
+        $paths = array_column($data['errors'], 'property');
+
+        $this->assertContains('X-Api-Token', $paths);
+    }
 }
