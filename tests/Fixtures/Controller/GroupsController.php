@@ -3,9 +3,9 @@
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\CountryRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\GroupedRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\MultiBindRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Groups\CountryRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Groups\GroupedRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Groups\MultiBindRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;

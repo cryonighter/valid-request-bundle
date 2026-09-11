@@ -5,10 +5,10 @@ namespace Cryonighter\ValidRequestBundle\Tests\Unit\Schema;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\PropertyNestedItem;
 use Cryonighter\ValidRequestBundle\Schema\SchemaFactory;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\CheckoutOrderRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\DeliveryAddressRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\GiftWrapRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\OrderLineRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\SchemaCache\CheckoutOrderRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\SchemaCache\DeliveryAddressRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\SchemaCache\GiftWrapRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\SchemaCache\OrderLineRequest;
 use PHPUnit\Framework\TestCase;
 
 class SchemaSerializationTest extends TestCase

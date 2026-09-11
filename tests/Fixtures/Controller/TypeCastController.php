@@ -2,10 +2,10 @@
 
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCastBoolRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCastFloatRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCastIntRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCastRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCast\TypeCastBoolRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCast\TypeCastFloatRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCast\TypeCastIntRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\TypeCast\TypeCastRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;

@@ -3,7 +3,7 @@
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\AuthRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Basic\AuthRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;

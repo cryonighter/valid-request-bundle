@@ -2,8 +2,8 @@
 
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ExtraFieldsQueryRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ExtraFieldsRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ExtraFields\ExtraFieldsQueryRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ExtraFields\ExtraFieldsRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;

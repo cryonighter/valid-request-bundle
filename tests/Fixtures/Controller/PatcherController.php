@@ -2,8 +2,8 @@
 
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ArticleRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\PatcherObjectRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Patcher\ArticleRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Patcher\PatcherObjectRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;

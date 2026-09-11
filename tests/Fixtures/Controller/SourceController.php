@@ -2,13 +2,13 @@
 
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\AttributeRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\CookieRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\HeaderRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\MixedSourceRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\NamedParamRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\QueryFilterRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ServerRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Source\AttributeRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Source\CookieRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Source\HeaderRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Source\MixedSourceRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Source\NamedParamRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Source\QueryFilterRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Source\ServerRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;

@@ -2,8 +2,8 @@
 
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\FileRequest;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\NullableFileRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\File\FileRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\File\NullableFileRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;

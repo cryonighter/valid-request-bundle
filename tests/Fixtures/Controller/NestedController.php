@@ -2,8 +2,8 @@
 
 namespace Cryonighter\ValidRequestBundle\Tests\Fixtures\Controller;
 
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ContactDTO;
-use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\ProfileRequest;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Nested\ContactDTO;
+use Cryonighter\ValidRequestBundle\Tests\Fixtures\DTO\Nested\ProfileRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
