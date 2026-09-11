@@ -13,6 +13,7 @@ use ReflectionClass;
 use ReflectionException;
 use ReflectionParameter;
 use ReflectionProperty;
+use stdClass;
 use Symfony\Component\HttpFoundation\Request;
 
 readonly class ObjectHydrator
@@ -197,17 +198,28 @@ readonly class ObjectHydrator
 
         if ($type->isObject || $type->name === 'mixed') {
             $nestedSchema = $propertyNode->getNestedSchema($groups);
+            $nestedType = $propertyNode->getNestedTypes($groups)[0] ?? null;
 
-            // Типы "object" и "mixed" могут как иметь схему и быть объектами, так и не иметь и быть примитивами.
-            // Не встроенные типы схему иметь обязаны, если ее по каким то причинам нет - бросаем исключение.
+            // Типы "object" и "mixed" могут как иметь схему (через Assert\Type) и быть объектами, так и не иметь и быть примитивами.
+            // Не встроенные типы (классы, интерфейсы, кроме stdClass) схему иметь обязаны, если ее по каким то причинам нет - бросаем исключение.
             // Если значение уже является объектом (например, его уже построил кастер) - пропускаем
-            if (($nestedSchema || !$type->builtin) && !is_object($value)) {
+            if (($nestedSchema || !$type->builtin || $type->name === 'object' || ($type->name === 'mixed' && $nestedType === 'object')) && !is_object($value)) {
                 // Данные уже провалидированы, так что такое вряд ли может быть. Но на всякий случай добавлю.
                 if (!is_array($value)) {
-                    throw new ValidRequestException("Hydrating an object requires a list of its properties as an array, not a " . gettype($value));
+                    throw new ValidRequestException(
+                        'Hydrating an object of type "' .
+                        ($nestedSchema?->className ?? $nestedType ?? $type->name) .
+                        '" requires a list of its properties as an array, not a ' . gettype($value),
+                    );
                 }
 
-                if (!$nestedSchema) {
+                if (!$nestedSchema || $nestedSchema->className === stdClass::class) {
+                    // JSON encode/decode нужно для преобразования вложенных массивов в объект
+                    // Дополнительный каст к объекту нужен для преобразования пустого массива
+                    if (in_array($type->name, ['mixed', 'object', stdClass::class])) {
+                        return (object) json_decode(json_encode($value));
+                    }
+
                     throw new ValidRequestException("Unable to resolve class for param '$name'");
                 }
 

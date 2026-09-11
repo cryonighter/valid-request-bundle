@@ -55,6 +55,17 @@ readonly class PropertyNode
         );
     }
 
+    public function getNestedTypes(ValidationGroups $requestGroups): array
+    {
+        foreach ($this->nested as $item) {
+            if ($requestGroups->intersects($item->groupsType)) {
+                return $item->types;
+            }
+        }
+
+        return [];
+    }
+
     public function getNestedSchema(ValidationGroups $requestGroups): ?ObjectSchema
     {
         foreach ($this->nested as $item) {

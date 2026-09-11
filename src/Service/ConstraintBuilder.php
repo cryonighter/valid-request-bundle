@@ -9,6 +9,7 @@ use Cryonighter\ValidRequestBundle\Validator\ExtendedCollection;
 use Cryonighter\ValidRequestBundle\Validator\NoExtraFields;
 use DateTimeInterface;
 use RuntimeException;
+use stdClass;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -24,21 +25,40 @@ final class ConstraintBuilder
 
             $notExpected = is_array($notExpectedFields[$name] ?? null) ? $notExpectedFields[$name] : [];
 
-            if (($type->isObject || $type->name === 'mixed') && $node->hasValidConstraint($requestGroups)) {
+            if ($type->isObject || $type->name === 'mixed') {
                 $nestedSchema = $node->getNestedSchema($requestGroups);
 
-                if ($nestedSchema) {
+                // Констрейнты для классов
+                if ($nestedSchema && $node->hasValidConstraint($requestGroups)) {
                     if ($nestedSchema->isAbstract) {
                         throw new ValidRequestException(
                             "Cannot instantiate an abstract class or interface $nestedSchema->className in property $schema->className::$node->propertyName."
                         );
                     }
 
+                    // TODO: Можно еще сюда добавить Assert\Type
+
                     $constraints[$name] = $this->build(
                         $nestedSchema,
                         $requestGroups,
                         $notExpected,
                     );
+
+                    continue;
+                }
+
+                // Констрейнты для классов
+                $nestedType = $node->getNestedTypes($requestGroups)[0] ?? null;
+
+                $propertyTypeIsObject = in_array($type->name, [stdClass::class, 'object']);
+                $assertTypeIsObject = in_array($nestedType, [stdClass::class, 'object']);
+
+                // Если Assert\Type есть, но указывет не на обюект - не заходим сюда, пусть валидируется по Assert\Type.
+                // Да, такой объект не соберется, но это ошибка конфигураци DTO, которую должен исправлять пользователь.
+                if ($assertTypeIsObject || (!$nestedType && $propertyTypeIsObject)) {
+                    // TODO: Тут нужно сохранять сообщение от оригинального констрейнта, но я не хочу снова перебирать массив и искать его.
+                    // TODO: По хорошему нужно сохранять весь оригинальный констрейнт типа в PropertyNestedItem, а не только типы из него.
+                    $constraints[$name][] = new Assert\Type('array', 'This value should be of type object.');
 
                     continue;
                 }

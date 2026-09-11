@@ -10,7 +10,6 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionProperty;
-use RuntimeException;
 use stdClass;
 use Symfony\Component\Config\ConfigCache;
 use Symfony\Component\Config\Resource\FileResource;
@@ -110,7 +109,6 @@ class SchemaFactory
                 // Если он уже покрыт через Assert\Type - ничего страшного, продублируем (это проще, чем искать).
                 $schemas = [];
 
-                // TODO: тест на stdClass
                 if ($type->name !== 'mixed' && $type->name !== 'object' && $type->name !== stdClass::class) {
                     $schemas[$type->name] = $this->create($type->name, $classes, $files);
                 }
