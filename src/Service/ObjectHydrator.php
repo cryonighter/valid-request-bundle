@@ -4,6 +4,7 @@ namespace Cryonighter\ValidRequestBundle\Service;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
 use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Cryonighter\ValidRequestBundle\Exception\ValidRequestException;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\PropertyNode;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
@@ -12,7 +13,6 @@ use ReflectionClass;
 use ReflectionException;
 use ReflectionParameter;
 use ReflectionProperty;
-use RuntimeException;
 
 readonly class ObjectHydrator
 {
@@ -105,6 +105,16 @@ readonly class ObjectHydrator
             $name = $this->getFieldName($parameter, $validRequest->validationGroups);
             $value = $payload[$name] ?? null;
 
+            // Если несколько аргументов конструктора биндятся к одному и тому же параметру запроса
+            if (isset($arguments[$name])) {
+                // Порядок и количество аргументов важно сохранить для передачи в конструктор
+                // А имена используются для вычесления разници между свойствами, инициализируемыми
+                // в конструкторе и свойствами, инициируемые другими способами
+                $arguments[$parameter->name] = $arguments[$name];
+
+                continue;
+            }
+
             $propertyNode = $schema->getPropertyByRequestName($name, $validRequest->validationGroups);
 
             // Параметр конструктора не сопоставляется со свойством класса ни по имени, ни по бинду
@@ -118,14 +128,18 @@ readonly class ObjectHydrator
 
                     if ($parameter->isDefaultValueAvailable()) {
                         $arguments[$name] = $parameter->getDefaultValue();
+
+                        continue;
                     }
 
                     // Наличие этого кейса спорно. Он появился при другой архитектуре и не понятно нужен ли сейчас.
                     if (in_array($parameter->getType()->getName(), ['array', 'callable'])) {
-                        return [];
+                        $arguments[$name] = [];
+
+                        continue;
                     }
 
-                    throw new RuntimeException("The '$name' constructor parameter must be non-empty, nullable, or have a default value");
+                    throw new ValidRequestException("The '$name' constructor parameter must be non-empty, nullable, or have a default value");
                 }
 
                 $arguments[$name] = $value;
@@ -170,11 +184,11 @@ readonly class ObjectHydrator
             if (($nestedSchema || !$type->builtin) && !is_object($value)) {
                 // Данные уже провалидированы, так что такое вряд ли может быть. Но на всякий случай добавлю.
                 if (!is_array($value)) {
-                    throw new RuntimeException("Hydrating an object requires a list of its properties as an array, not a " . gettype($value));
+                    throw new ValidRequestException("Hydrating an object requires a list of its properties as an array, not a " . gettype($value));
                 }
 
                 if (!$nestedSchema) {
-                    throw new RuntimeException("Unable to resolve class for param '$name'");
+                    throw new ValidRequestException("Unable to resolve class for param '$name'");
                 }
 
                 return $this->hydrate($nestedSchema, $value, $validRequest);
@@ -193,7 +207,7 @@ readonly class ObjectHydrator
         }
 
         // Валидные nullable кейсы к этому моменту уже отработаны
-        return $value ?? throw new RuntimeException("The '$propertyNode->propertyName' property must be non-empty, nullable or have a default value");
+        return $value ?? throw new ValidRequestException("The '$propertyNode->propertyName' property must be non-empty, nullable or have a default value");
     }
 
     private function getFieldName(ReflectionProperty|ReflectionParameter $property, ValidationGroups $requestGroups): string
@@ -207,7 +221,16 @@ readonly class ObjectHydrator
     ): ?BindRequestParam {
         return array_find(
             array_map(
-                fn(ReflectionAttribute $attribute): BindRequestParam => $attribute->newInstance(),
+                function(ReflectionAttribute $attribute) use ($property): BindRequestParam {
+                    /** @var BindRequestParam $bindRequestParam */
+                    $bindRequestParam = $attribute->newInstance();
+
+                    if ($bindRequestParam->source && $property instanceof ReflectionParameter && !$property->isPromoted()) {
+                        throw new ValidRequestException("BindRequestParam::source cannot be defined on a simple (not promoted) constructor parameter");
+                    }
+
+                    return $bindRequestParam;
+                },
                 $property->getAttributes(BindRequestParam::class),
             ),
             fn(BindRequestParam $bindPayload): bool => $requestGroups->intersects($bindPayload->validationGroups),
