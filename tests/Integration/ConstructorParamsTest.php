@@ -150,4 +150,38 @@ class ConstructorParamsTest extends AbstractWebTestCase
 
         $browser->request('POST', '/constructor/source-on-param', ['title' => 'Hello']);
     }
+
+    /**
+     * Патчер на «лишнем» параметре конструктора (только patcher, без name и
+     * source): значение DateTime появляется исключительно из патчера.
+     * Успешная сборка объекта означает, что патчер отработал.
+     */
+    public function testPatcherOnExtraParam(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request('POST', '/constructor/patcher-on-extra', ['title' => 'Hello']);
+
+        $this->assertResponseIsSuccessful();
+
+        $data = $this->getJsonResponse($browser);
+
+        $this->assertSame('Hello', $data['title']);
+    }
+
+    /**
+     * Двойной патчер: патчер свойства возвращает DateTime, патчер параметра
+     * конструктора преобразует его в DateTimeImmutable. Итоговое значение
+     * свойства должно быть DateTimeImmutable.
+     */
+    public function testDoublePatcherResultsInImmutable(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request('POST', '/constructor/double-patcher', ['title' => 'Hello']);
+
+        $this->assertResponseIsSuccessful();
+
+        $data = $this->getJsonResponse($browser);
+
+        $this->assertSame(\DateTimeImmutable::class, $data['createdAtClass']);
+    }
 }

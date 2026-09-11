@@ -126,4 +126,39 @@ class ConstructorController extends AbstractTestController
     ): JsonResponse {
         return new JsonResponse(['title' => $request->title]);
     }
+
+    /**
+     * Патчер на «лишнем» параметре конструктора: значение DateTime приходит
+     * только из патчера. Если объект собрался — патчер отработал.
+     */
+    #[Route('/constructor/patcher-on-extra', methods: ['POST'])]
+    public function patcherOnExtra(
+        #[ValidRequest]
+        PatcherOnExtraParamRequest $request,
+        ?ConstraintViolationListInterface $violations,
+    ): JsonResponse {
+        if ($violations !== null) {
+            return $this->createErrorResponse($violations);
+        }
+
+        return new JsonResponse(['title' => $request->title]);
+    }
+
+    /**
+     * Двойной патчер: патчер свойства возвращает DateTime, патчер параметра
+     * конструктора преобразует его в DateTimeImmutable.
+     * Возвращаем класс итогового значения свойства.
+     */
+    #[Route('/constructor/double-patcher', methods: ['POST'])]
+    public function doublePatcher(
+        #[ValidRequest]
+        DoublePatcherRequest $request,
+        ?ConstraintViolationListInterface $violations,
+    ): JsonResponse {
+        if ($violations !== null) {
+            return $this->createErrorResponse($violations);
+        }
+
+        return new JsonResponse(['createdAtClass' => $request->createdAt::class]);
+    }
 }

@@ -30,12 +30,7 @@ final readonly class ValidationGroups
         return match (true) {
             is_string($groups) && $groups => [$groups],
             is_array($groups) && $groups => $this->normalizeArray($groups),
-            $groups instanceof GroupSequence => match (true) {
-                is_string($groups->groups) && $groups->groups => [$groups->groups],
-                is_array($groups->groups) && $groups->groups => $this->normalizeArray($groups->groups),
-                $groups->groups instanceof GroupSequence => throw new RuntimeException('Too much nesting of groups'),
-                default => ['Default'],
-            },
+            $groups instanceof GroupSequence => $this->normalize($groups->groups),
             default => ['Default'],
         };
     }

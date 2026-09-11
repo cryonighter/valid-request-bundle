@@ -3,8 +3,8 @@
 namespace Cryonighter\ValidRequestBundle\Service;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
-use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
 use Cryonighter\ValidRequestBundle\Exception\ValidRequestException;
+use Cryonighter\ValidRequestBundle\Patcher\PatcherLocator;
 use Cryonighter\ValidRequestBundle\Schema\ObjectSchema;
 use Cryonighter\ValidRequestBundle\Schema\PropertyNode;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
@@ -13,13 +13,19 @@ use ReflectionClass;
 use ReflectionException;
 use ReflectionParameter;
 use ReflectionProperty;
+use Symfony\Component\HttpFoundation\Request;
 
 readonly class ObjectHydrator
 {
+    public function __construct(
+        private PatcherLocator $patcherLocator,
+    ) {
+    }
+
     /**
      * @throws ReflectionException
      */
-    public function hydrate(ObjectSchema $schema, array $data, ValidRequest $validRequest): object
+    public function hydrate(ObjectSchema $schema, array $data, ValidationGroups $groups, Request $request): object
     {
         $className = $schema->className;
         $reflectionClass = new ReflectionClass($className);
@@ -28,7 +34,7 @@ readonly class ObjectHydrator
         $parameters = $constructor?->getParameters();
 
         if ($constructor && $parameters) {
-            $arguments = $this->getConstructorArguments($schema, $data, $parameters, $validRequest);
+            $arguments = $this->getConstructorArguments($schema, $data, $parameters, $groups, $request);
 
             $data = array_diff_key($data, $arguments);
 
@@ -44,7 +50,7 @@ readonly class ObjectHydrator
         $propertyMap = [];
 
         foreach ($reflectionClass->getProperties() as $property) {
-            $propertyMap[$this->getFieldName($property, $validRequest->validationGroups)] = $property;
+            $propertyMap[$this->getFieldName($property, $groups)] = $property;
         }
 
         foreach ($data as $name => $value) {
@@ -60,7 +66,7 @@ readonly class ObjectHydrator
             $propertyName = $property->getName();
             $propertyNode = $schema->properties[$propertyName];
 
-            $value = $this->hydrateValue($name, $value, $propertyNode, $validRequest);
+            $value = $this->hydrateValue($name, $value, $propertyNode, $groups, $request);
 
             $setter = 'set' . ucfirst($propertyName);
 
@@ -91,18 +97,24 @@ readonly class ObjectHydrator
      * @param ObjectSchema          $schema
      * @param array                 $payload
      * @param ReflectionParameter[] $parameters
-     * @param ValidRequest          $validRequest
+     * @param ValidationGroups      $groups
+     * @param Request               $request
      *
      * @return array
      *
      * @throws ReflectionException
      */
-    private function getConstructorArguments(ObjectSchema $schema, array $payload, array $parameters, ValidRequest $validRequest): array
-    {
+    private function getConstructorArguments(
+        ObjectSchema $schema,
+        array $payload,
+        array $parameters,
+        ValidationGroups $groups,
+        Request $request,
+    ): array {
         $arguments = [];
 
         foreach ($parameters as $parameter) {
-            $name = $this->getFieldName($parameter, $validRequest->validationGroups);
+            $name = $this->getFieldName($parameter, $groups);
             $value = $payload[$name] ?? null;
 
             // Если несколько аргументов конструктора биндятся к одному и тому же параметру запроса
@@ -115,7 +127,15 @@ readonly class ObjectHydrator
                 continue;
             }
 
-            $propertyNode = $schema->getPropertyByRequestName($name, $validRequest->validationGroups);
+            $patcher = $this->getBindRequestParamByGroups($parameter, $groups)?->patcher;
+
+            if ($patcher && !$parameter->isPromoted()) {
+                $arguments[$name] = $this->patcherLocator->get($patcher)->patch($value, $request);
+
+                continue;
+            }
+
+            $propertyNode = $schema->getPropertyByRequestName($name, $groups);
 
             // Параметр конструктора не сопоставляется со свойством класса ни по имени, ни по бинду
             if (!$propertyNode) {
@@ -147,7 +167,7 @@ readonly class ObjectHydrator
                 continue;
             }
 
-            $arguments[$name] = $this->hydrateValue($name, $value, $propertyNode, $validRequest);
+            $arguments[$name] = $this->hydrateValue($name, $value, $propertyNode, $groups, $request);
         }
 
         return $arguments;
@@ -156,7 +176,7 @@ readonly class ObjectHydrator
     /**
      * @throws ReflectionException
      */
-    private function hydrateValue(string $name, mixed $value, PropertyNode $propertyNode, ValidRequest $validRequest): mixed
+    private function hydrateValue(string $name, mixed $value, PropertyNode $propertyNode, ValidationGroups $groups, Request $request): mixed
     {
         $type = $propertyNode->type;
 
@@ -176,7 +196,7 @@ readonly class ObjectHydrator
         }
 
         if ($type->isObject || $type->name === 'mixed') {
-            $nestedSchema = $propertyNode->getNestedSchema($validRequest->validationGroups);
+            $nestedSchema = $propertyNode->getNestedSchema($groups);
 
             // Типы "object" и "mixed" могут как иметь схему и быть объектами, так и не иметь и быть примитивами.
             // Не встроенные типы схему иметь обязаны, если ее по каким то причинам нет - бросаем исключение.
@@ -191,16 +211,16 @@ readonly class ObjectHydrator
                     throw new ValidRequestException("Unable to resolve class for param '$name'");
                 }
 
-                return $this->hydrate($nestedSchema, $value, $validRequest);
+                return $this->hydrate($nestedSchema, $value, $groups, $request);
             }
         }
 
         if (in_array($type->name, ['array', 'iterable']) && !is_object($value)) {
-            $itemSchema = $propertyNode->getItemSchema($validRequest->validationGroups);
+            $itemSchema = $propertyNode->getItemSchema($groups);
 
             if ($itemSchema) {
                 return array_map(
-                    fn(array $item): object => $this->hydrate($itemSchema, $item, $validRequest),
+                    fn(array $item): object => $this->hydrate($itemSchema, $item, $groups, $request),
                     is_array($value) ? $value : iterator_to_array($value),
                 );
             }
@@ -210,14 +230,14 @@ readonly class ObjectHydrator
         return $value ?? throw new ValidRequestException("The '$propertyNode->propertyName' property must be non-empty, nullable or have a default value");
     }
 
-    private function getFieldName(ReflectionProperty|ReflectionParameter $property, ValidationGroups $requestGroups): string
+    private function getFieldName(ReflectionProperty|ReflectionParameter $property, ValidationGroups $groups): string
     {
-        return $this->getBindRequestParamByGroups($property, $requestGroups)?->name ?: $property->getName();
+        return $this->getBindRequestParamByGroups($property, $groups)?->name ?: $property->getName();
     }
 
     private function getBindRequestParamByGroups(
         ReflectionProperty|ReflectionParameter $property,
-        ValidationGroups $requestGroups,
+        ValidationGroups $groups,
     ): ?BindRequestParam {
         return array_find(
             array_map(
@@ -233,7 +253,7 @@ readonly class ObjectHydrator
                 },
                 $property->getAttributes(BindRequestParam::class),
             ),
-            fn(BindRequestParam $bindPayload): bool => $requestGroups->intersects($bindPayload->validationGroups),
+            fn(BindRequestParam $bindPayload): bool => $groups->intersects($bindPayload->validationGroups),
         );
     }
 }
