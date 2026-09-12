@@ -5,7 +5,6 @@
     "homepage": "https://github.com/cryonighter/valid-request-bundle",
     "license": "MIT",
     "keywords": ["symfony", "validation", "validator", "validated", "valid", "violation", "request", "DTO", "bundle"],
-    "version": "0.1.0",
     "authors": [
         {
             "name": "Andrey Reshetchenko",
