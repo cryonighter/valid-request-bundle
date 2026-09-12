@@ -112,11 +112,9 @@ final class ConstraintBuilder
                         }
                     }
 
-                    if (!$allConstraints) {
-                        continue;
+                    if ($allConstraints) {
+                        $constraints[$name][] = new Assert\All($allConstraints);
                     }
-
-                    $constraints[$name][] = new Assert\All($allConstraints);
                 }
             }
 

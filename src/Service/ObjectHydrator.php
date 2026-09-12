@@ -236,6 +236,10 @@ readonly class ObjectHydrator
                     is_array($value) ? $value : iterator_to_array($value),
                 );
             }
+
+            if (!is_iterable($value)) {
+                throw new ValidRequestException("The '$propertyNode->propertyName' property must be an iterable, not a " . gettype($value));
+            }
         }
 
         // Валидные nullable кейсы к этому моменту уже отработаны
