@@ -6,7 +6,7 @@ use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\ConstraintValidator;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
 
-class NoExtraFieldsValidator extends ConstraintValidator
+final class NoExtraFieldsValidator extends ConstraintValidator
 {
     public function validate(mixed $value, Constraint $constraint): void
     {

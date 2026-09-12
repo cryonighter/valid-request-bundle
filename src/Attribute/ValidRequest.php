@@ -10,7 +10,7 @@ use InvalidArgumentException;
 use Symfony\Component\Validator\Constraints\GroupSequence;
 
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_PARAMETER)]
-readonly class ValidRequest
+readonly final class ValidRequest
 {
     private(set) ValidationGroups $validationGroups;
 

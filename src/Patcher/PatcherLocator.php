@@ -7,7 +7,7 @@ use Psr\Container\ContainerInterface;
 use Psr\Container\NotFoundExceptionInterface;
 use RuntimeException;
 
-readonly class PatcherLocator
+readonly final class PatcherLocator
 {
     public function __construct(
         private ContainerInterface $locator,

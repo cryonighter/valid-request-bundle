@@ -5,7 +5,7 @@ namespace Cryonighter\ValidRequestBundle\Caster;
 use Cryonighter\ValidRequestBundle\Schema\PropertyType;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 
-readonly class ValueCastComposite implements ValueCasterInterface
+readonly final class ValueCastComposite implements ValueCasterInterface
 {
     /**
      * @param ValueCasterInterface[] $casters

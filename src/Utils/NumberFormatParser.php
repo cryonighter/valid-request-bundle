@@ -2,7 +2,7 @@
 
 namespace Cryonighter\ValidRequestBundle\Utils;
 
-class NumberFormatParser
+final class NumberFormatParser
 {
     public static function parseFloat(string $value): ?float {
         // Убираем все виды пробелов

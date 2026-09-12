@@ -6,7 +6,7 @@ use Cryonighter\ValidRequestBundle\Schema\PropertyType;
 use DateTimeInterface;
 use Throwable;
 
-class DateTimeCaster implements ValueCasterInterface
+final class DateTimeCaster implements ValueCasterInterface
 {
     public function supports(PropertyType $type): bool
     {

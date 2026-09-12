@@ -4,7 +4,7 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 
-readonly class PropertyNestedItem
+readonly final class PropertyNestedItem
 {
     public function __construct(
         public ValidationGroups $groupsAll,

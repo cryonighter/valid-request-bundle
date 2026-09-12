@@ -1,8 +1,6 @@
 <?php
 
-namespace Cryonighter\ValidRequestBundle\Schema\Exception;
-
-use Cryonighter\ValidRequestBundle\Exception\ValidRequestException;
+namespace Cryonighter\ValidRequestBundle\Exception;
 
 final class CyclicSchemaException extends ValidRequestException
 {

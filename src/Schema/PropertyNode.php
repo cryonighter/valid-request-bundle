@@ -7,7 +7,7 @@ use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 
-readonly class PropertyNode
+readonly final class PropertyNode
 {
     public const string file = __FILE__;
 

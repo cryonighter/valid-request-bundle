@@ -4,7 +4,7 @@ namespace Cryonighter\ValidRequestBundle\Schema;
 
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 
-readonly class ObjectSchema
+readonly final class ObjectSchema
 {
     public const string file = __FILE__;
 

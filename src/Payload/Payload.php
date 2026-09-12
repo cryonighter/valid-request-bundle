@@ -34,7 +34,7 @@ use Symfony\Component\HttpFoundation\Request;
  *    sources are always addressed from the root and are declared explicitly by the
  *    user via #[BindRequestParam], so no scoping surprises are expected.
  */
-readonly class Payload
+readonly final class Payload
 {
     public function __construct(
         private array $payload,

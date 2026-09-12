@@ -16,7 +16,7 @@ use ReflectionProperty;
 use stdClass;
 use Symfony\Component\HttpFoundation\Request;
 
-readonly class ObjectHydrator
+readonly final class ObjectHydrator
 {
     public function __construct(
         private PatcherLocator $patcherLocator,

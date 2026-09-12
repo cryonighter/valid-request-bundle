@@ -22,7 +22,7 @@ use Symfony\Component\Validator\ConstraintViolationListInterface;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-readonly class ValidRequestResolver implements ValueResolverInterface
+readonly final class ValidRequestResolver implements ValueResolverInterface
 {
     public function __construct(
         private ObjectHydrator $objectHydrator,

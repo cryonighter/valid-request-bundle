@@ -6,7 +6,7 @@ use Attribute;
 use Symfony\Component\Validator\Constraint;
 
 #[Attribute(Attribute::TARGET_CLASS)]
-class NoExtraFields extends Constraint
+final class NoExtraFields extends Constraint
 {
     public function __construct(
         public string $message = 'This field was not expected.',

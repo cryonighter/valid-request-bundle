@@ -17,7 +17,7 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use function Cryonighter\ValidRequestBundle\empty_data_recursive;
 
-readonly class PayloadExtractor
+readonly final class PayloadExtractor
 {
     public function __construct(
         private ConstraintBuilder $constraintBuilder,

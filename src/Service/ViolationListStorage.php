@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadata;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
 
-class ViolationListStorage
+final class ViolationListStorage
 {
     private const string ARG_RES = 'ARG_RES';
 

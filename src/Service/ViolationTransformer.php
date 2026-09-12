@@ -6,7 +6,7 @@ use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
 
-class ViolationTransformer
+final class ViolationTransformer
 {
     public function arrayKeyToObjectKey(ConstraintViolationListInterface $violations): ConstraintViolationListInterface
     {

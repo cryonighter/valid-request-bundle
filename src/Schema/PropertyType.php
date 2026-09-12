@@ -11,7 +11,7 @@ use ReflectionUnionType;
 use RuntimeException;
 use Traversable;
 
-readonly class PropertyType
+readonly final class PropertyType
 {
     public const string file = __FILE__;
 

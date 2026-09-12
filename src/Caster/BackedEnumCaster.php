@@ -5,7 +5,7 @@ namespace Cryonighter\ValidRequestBundle\Caster;
 use BackedEnum;
 use Cryonighter\ValidRequestBundle\Schema\PropertyType;
 
-class BackedEnumCaster implements ValueCasterInterface
+final class BackedEnumCaster implements ValueCasterInterface
 {
     public function supports(PropertyType $type): bool
     {

@@ -41,7 +41,7 @@ use Symfony\Component\Validator\Constraints\GroupSequence;
  * request payload, and the `emailAddress` parameter is bound to the `email` field.
  */
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY | Attribute::IS_REPEATABLE)]
-class BindRequestParam
+final class BindRequestParam
 {
     private(set) ValidationGroups $validationGroups;
 

@@ -8,7 +8,7 @@ use Symfony\Component\Validator\Constraints\CollectionValidator;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
 use Traversable;
 
-class ExtendedCollectionValidator extends CollectionValidator
+final class ExtendedCollectionValidator extends CollectionValidator
 {
     public function validate($value, Constraint $constraint): void
     {

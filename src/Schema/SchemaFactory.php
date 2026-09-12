@@ -3,7 +3,7 @@
 namespace Cryonighter\ValidRequestBundle\Schema;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
-use Cryonighter\ValidRequestBundle\Schema\Exception\CyclicSchemaException;
+use Cryonighter\ValidRequestBundle\Exception\CyclicSchemaException;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use DateTimeInterface;
 use ReflectionAttribute;
@@ -17,7 +17,7 @@ use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Constraints\GroupSequence;
 
-class SchemaFactory
+final class SchemaFactory
 {
     /** @var array<class-string, ObjectSchema> */
     private array $memory = [];
