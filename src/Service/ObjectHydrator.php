@@ -67,6 +67,10 @@ readonly final class ObjectHydrator
             $propertyName = $property->getName();
             $propertyNode = $schema->properties[$propertyName];
 
+            if ($propertyNode->resolveUnbinding($groups)) {
+                continue;
+            }
+
             $value = $this->hydrateValue($name, $value, $propertyNode, $groups, $request);
 
             $setter = 'set' . ucfirst($propertyName);

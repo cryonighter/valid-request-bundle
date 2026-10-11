@@ -32,6 +32,10 @@ readonly final class ObjectSchema
         $data = [];
 
         foreach ($this->properties as $node) {
+            if ($node->resolveUnbinding($groups)) {
+                continue;
+            }
+
             $name = $node->fieldName($groups);
 
             $nestedSchema = $node->getNestedSchema($groups);
@@ -61,6 +65,10 @@ readonly final class ObjectSchema
         $data = [];
 
         foreach ($this->properties as $node) {
+            if ($node->resolveUnbinding($groups)) {
+                continue;
+            }
+
             $nestedSchema = $node->getNestedSchema($groups);
 
             if ($nestedSchema) {

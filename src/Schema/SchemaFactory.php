@@ -3,6 +3,7 @@
 namespace Cryonighter\ValidRequestBundle\Schema;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
+use Cryonighter\ValidRequestBundle\Attribute\UnbindRequestParam;
 use Cryonighter\ValidRequestBundle\Exception\CyclicSchemaException;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use DateTimeInterface;
@@ -140,6 +141,7 @@ final class SchemaFactory
                 propertyName: $property->getName(),
                 type: $type,
                 bindings: $this->collectBindings($property),
+                unbindings: $this->collectUnbindings($property),
                 constraints: $constraints,
                 nested: $nestedSchemas,
                 nestedItems: $nestedItemSchemas,
@@ -158,6 +160,17 @@ final class SchemaFactory
         return array_map(
             fn (ReflectionAttribute $attribute): BindRequestParam => $attribute->newInstance(),
             $property->getAttributes(BindRequestParam::class),
+        );
+    }
+
+    /**
+     * @return UnbindRequestParam[]
+     */
+    private function collectUnbindings(ReflectionProperty $property): array
+    {
+        return array_map(
+            fn (ReflectionAttribute $attribute): UnbindRequestParam => $attribute->newInstance(),
+            $property->getAttributes(UnbindRequestParam::class),
         );
     }
 

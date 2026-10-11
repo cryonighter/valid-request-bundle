@@ -20,6 +20,10 @@ final class ConstraintBuilder
         $constraints = [];
 
         foreach ($schema->properties as $node) {
+            if ($node->resolveUnbinding($requestGroups)) {
+                continue;
+            }
+
             $name = $node->fieldName($requestGroups);
             $type = $node->type;
 

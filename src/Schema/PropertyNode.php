@@ -3,6 +3,7 @@
 namespace Cryonighter\ValidRequestBundle\Schema;
 
 use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
+use Cryonighter\ValidRequestBundle\Attribute\UnbindRequestParam;
 use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -21,11 +22,20 @@ readonly final class PropertyNode
         public string $propertyName,
         public PropertyType $type,
         public array $bindings,
+        public array $unbindings,
         public array $constraints,
         public array $nested = [],
         public array $nestedItems = [],
         public mixed $defaultValue = null,
     ) {
+    }
+
+    public function resolveUnbinding(ValidationGroups $groups): ?UnbindRequestParam
+    {
+        return array_find(
+            $this->unbindings,
+            fn (UnbindRequestParam $unbinding): bool => $groups->intersects($unbinding->validationGroups),
+        );
     }
 
     /**

@@ -658,6 +658,113 @@ class AuthController
 ```
 
 
+### Атрибут UnbindRequestParam
+
+Атрибут `#[UnbindRequestParam]` решает обратную задачу — он **исключает свойство из связывания с данными запроса**.
+Это полезно, когда значение свойства не приходит от пользователя, а формируется иначе:
+вычисляется в конструкторе, является внутренним кэшем или служебным полем объекта.
+
+Атрибут указывается на свойстве класса или promoted-параметре конструктора — именно там,
+где описывается структура запроса (по аналогии с `#[BindRequestParam]`).
+
+Отвязанное свойство:
+- **исключается из контракта запроса** — оно не участвует в подготовке данных и не связывается с полями запроса;
+- **исключается из валидации сырых данных** — его констрейнты не применяются на этапе проверки пользовательского ввода;
+- **если поле всё же придёт в запросе — это будет расценено как лишнее поле** (см. ограничение ниже).
+
+При этом значение свойства должно быть получено иным способом — вычислено в конструкторе,
+задано значением по умолчанию и т.п. Финальная валидация собранного объекта при этом сохраняется:
+`#[UnbindRequestParam]` управляет только связыванием с запросом, но не отключает проверку инвариантов DTO.
+
+```php
+use Cryonighter\ValidRequestBundle\Attribute\UnbindRequestParam;
+use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[ValidRequest]
+class ArticleRequest
+{
+    // Отвязанное свойство: в запросе его быть не должно, значение вычисляется в конструкторе.
+    #[UnbindRequestParam]
+    #[Assert\NotBlank]
+    public string $slug;
+
+    public function __construct(
+        #[Assert\NotBlank]
+        #[Assert\Length(max: 255)]
+        public string $title,
+    ) {
+        $this->slug = strtolower(str_replace(' ', '-', $this->title));
+    }
+}
+```
+
+#### Параметр "groups"
+
+Как и `#[BindRequestParam]`, атрибут `#[UnbindRequestParam]` реагирует на группы валидации,
+указанные через `#[ValidRequest]`. Это позволяет отвязывать свойство только в определённых контекстах,
+а в остальных — связывать его как обычное поле запроса.
+
+В примере ниже поле `reference` отвязано от запроса только для группы `Internal` (значение берётся из значения
+по умолчанию). Для группы `Public` и всех остальных оно связывается как обычное поле:
+
+```php
+use Cryonighter\ValidRequestBundle\Attribute\UnbindRequestParam;
+use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Symfony\Component\Validator\Constraints as Assert;
+
+class OrderRequest
+{
+    public function __construct(
+        #[Assert\NotBlank]
+        public string $name,
+
+        #[UnbindRequestParam(groups: ['Internal'])]
+        #[Assert\NotBlank]
+        public string $reference = 'computed-ref',
+    ) {}
+}
+
+class OrderController
+{
+    // Группа Internal: reference отвязан, значение из значения по умолчанию.
+    #[Route('/order/internal', methods: [Request::METHOD_POST])]
+    public function internal(
+        #[ValidRequest(groups: ['Default', 'Internal'])]
+        OrderRequest $request,
+    ): Response {
+        // ...
+    }
+
+    // Группа Public: reference связывается как обычное поле запроса.
+    #[Route('/order/public', methods: [Request::METHOD_POST])]
+    public function public(
+        #[ValidRequest(groups: ['Default', 'Public'])]
+        OrderRequest $request,
+    ): Response {
+        // ...
+    }
+}
+```
+
+Атрибуты `#[BindRequestParam]` и `#[UnbindRequestParam]` можно комбинировать на одном свойстве,
+если у них разные группы. Так свойство может связываться в одном контексте и быть отвязанным в другом:
+
+```php
+class ValueRequest
+{
+    public function __construct(
+        #[BindRequestParam(source: RequestValueSource::query, groups: ['Read'])]
+        #[UnbindRequestParam(groups: ['Create'])]
+        #[Assert\NotBlank]
+        public string $value = 'default',
+    ) {}
+}
+```
+
+В случае конфликта атрибутов `#[BindRequestParam]` и `#[UnbindRequestParam]` приоритет будет выдан последнему.
+
+
 ### Преобразование типов
 
 Для текстовых форматов передачи данных, таких как `application/x-www-form-urlencoded` или `multipart/form-data`
@@ -1106,6 +1213,34 @@ public array $invoices;
 Помимо этого, `ValidRequestBundle` позволяет смешивать источники **внутри одного DTO** через `#[BindRequestParam(source: ...)]` — например,
 взять `id` из route-атрибутов, а остальные поля из тела запроса. В нативном подходе для этого потребуется несколько отдельных аргументов контроллера.
 
+### Исключение свойства из связывания
+
+Иногда свойство DTO не должно приходить от пользователя вовсе: оно вычисляется в конструкторе,
+является внутренним кэшем или служебным полем. Обе системы позволяют исключить такое свойство,
+но подходы различаются.
+
+**Symfony.** Serializer поддерживает атрибут `#[Ignore]`, который исключает свойство как из сериализации,
+так и из денормализации [[1]](https://symfony.com/doc/current/serializer.html) [[2]](https://symfony.com/blog/new-in-symfony-5-1-serializer-improvements).
+Это статическое исключение: свойство, помеченное `#[Ignore]`, не участвует в маппинге всегда,
+независимо от контекста обработки. Тонко управлять этим по контексту можно только через группы
+сериализации (`#[Groups]`), которые задаются отдельно от групп валидации.
+
+**ValidRequestBundle.** Атрибут `#[UnbindRequestParam]` исключает свойство именно из **связывания с запросом**:
+оно не участвует в подготовке данных и не валидируется на этапе проверки сырого пользовательского ввода.
+При этом исключение можно привязать к **группе валидации** — одно и то же свойство может быть отвязано
+в одном контексте (экшн с одной группой) и связываться как обычное поле в другом.
+
+```php
+#[UnbindRequestParam(groups: ['Internal'])]
+#[Assert\NotBlank]
+public string $reference = 'computed-ref';
+```
+
+Обратите внимание на важное следствие философии бандла: раз отвязанное свойство исключается из контракта
+запроса, то его случайная передача пользователем расценивается как **лишнее поле** — в отличие от Symfony,
+где проигнорированное свойство просто молча отбрасывается. Это соответствует главной идее бандла —
+строго валидировать именно пользовательский ввод.
+
 ### Обработка ошибок валидации
 
 Нативные атрибуты при ошибке валидации автоматически выбрасывают `HttpException`
@@ -1196,6 +1331,7 @@ public array $invoices;
 | Приведение `DateTime` / `DateTimeImmutable`        | ✅                            | ✅                         |
 | Настройка формата даты через атрибут               | ✅ (`#[Context]`)             | ❌ (эвристика)             |
 | Выбор класса вложенного объекта                    | ✅ (по полю-дискриминатору)   | ✅ (по группе валидации)   |
+| Исключение свойства из связывания                  | ✅ (`#[Ignore]`, статически)  | ✅ (по группе валидации)   |
 | Работа без `symfony/serializer`                    | ❌                            | ✅                         |
 | HTTP-статус из коробки при ошибке валидации        | ✅ (422)                      | ❌ (нужен listener)        |
 | Единая стратегия гидрации                          | ⚠️ (зависит от нормализатора) | ✅                         |
@@ -1219,7 +1355,7 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 ./vendor/bin/phpunit --testsuite Integration
 
 # Specific file
-./vendor/bin/phpunit tests/Unit/Service/ViolationTransformerTest.php
+./vendor/bin/phpunit tests/Unit/Service/SchemaSerializationTest.php
 
 # With coating (requires Xdebug or PCOV)
 ./vendor/bin/phpunit --coverage-text
