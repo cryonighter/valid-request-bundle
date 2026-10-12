@@ -8,7 +8,7 @@ use Symfony\Component\Validator\ConstraintViolationListInterface;
 
 final class ViolationTransformer
 {
-    public function arrayKeyToObjectKey(ConstraintViolationListInterface $violations): ConstraintViolationListInterface
+    public function arrayKeyToObjectKey(ConstraintViolationListInterface $violations, array $objectStruct): ConstraintViolationListInterface
     {
         $newViolations = new ConstraintViolationList([]);
 
@@ -21,9 +21,18 @@ final class ViolationTransformer
 
                 $segments = explode('][', $propertyPath);
 
+                $deep = $objectStruct;
                 $result = '';
+
                 foreach ($segments as $segment) {
-                    if (ctype_digit($segment)) {
+                    $isList = array_is_list($deep);
+
+                    // $deep[$segment] может быть не определен, если валидация идет по лишнему полю, которого нет в объекте
+                    // В этом случае ничего делать не нужно, он попадет в else ветку и сформирует правельный путь к ошибке
+                    $deep = $isList ? $deep[0] : ($deep[$segment] ?? null);
+
+                    // Индексные массивы и ассоциативные массивы, не являющиеся объектами, оставляем в скобках
+                    if (ctype_digit($segment) || $isList) {
                         $result .= '[' . $segment . ']';
                     } else {
                         $result .= ($result === '' ? '' : '.') . $segment;

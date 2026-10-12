@@ -55,13 +55,16 @@ readonly final class PayloadExtractor
             return null;
         }
 
+        $schemaObjectStruct = $schema->getObjectStruct($requestGroups);
+
         $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
-            $this->notExpectedFields($payload->toArray(), $schema->getObjectStruct($requestGroups)) : [];
+            $this->notExpectedFields($payload->toArray(), $schemaObjectStruct) : [];
 
         $constraints = $this->constraintBuilder->build($schema, $requestGroups, $notExpectedFields);
 
         $violations = $this->violationTransformer->arrayKeyToObjectKey(
             $this->validator->validate($data, $constraints, $requestGroups->groups),
+            $schemaObjectStruct,
         );
 
         if ($violations->count() != 0) {
@@ -197,7 +200,10 @@ readonly final class PayloadExtractor
                     $isArrayObjectsStruct = array_is_list($struct[$key]) && count($struct[$key]) === 1;
 
                     if ($isArrayObjectsStruct) {
-                        $struct[$key] = array_fill(0, count($value), $struct[$key][0]);
+                        $struct[$key] = array_combine(
+                            array_keys($value),
+                            array_fill(0, count($value), $struct[$key][0]),
+                        );
                     }
 
                     $recursiveDiff = $this->notExpectedFields($value, $struct[$key]);

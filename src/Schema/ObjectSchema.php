@@ -49,7 +49,9 @@ readonly final class ObjectSchema
             $itemSchema = $node->getItemSchema($groups);
 
             if ($itemSchema) {
-                $data[$name] = [$itemSchema->getObjectStruct($groups)];
+                // Надо как-то через структуру обозначить, что это массив, а не объект
+                // Для этого используется массив с единственным элементом
+                $data[$name] = [0 => $itemSchema->getObjectStruct($groups)];
 
                 continue;
             }

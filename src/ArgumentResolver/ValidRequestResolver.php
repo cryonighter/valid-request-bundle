@@ -69,6 +69,7 @@ readonly final class ValidRequestResolver implements ValueResolverInterface
         $schema = $this->schemaFactory->create($reflectionClass->getName());
         $groups = $this->resolveGroups($reflectionClass, $validRequestAttribute->validationGroups);
 
+        $validationGroups = new ValidationGroups($groups);
         $hasViolationsArg = $this->violationListStorage->hasViolationsArg($request, $argument);
 
         try {
@@ -77,7 +78,7 @@ readonly final class ValidRequestResolver implements ValueResolverInterface
                 $schema,
                 $validRequestAttribute,
                 $request,
-                new ValidationGroups($groups),
+                $validationGroups,
                 $argument->isNullable(),
             );
         } catch (ValidationFailedException $exception) {
@@ -98,15 +99,17 @@ readonly final class ValidRequestResolver implements ValueResolverInterface
             return [];
         }
 
-        $dto = $this->objectHydrator->hydrate($schema, $data, new ValidationGroups($groups), $request);
+        $dto = $this->objectHydrator->hydrate($schema, $data, $validationGroups, $request);
 
         // Вторая валидация для правил, требующих объекты
-        $violations = $this->violationTransformer->propertyToField(
-            $this->validator->validate($dto, groups: $groups),
-            $schema->getObjectMap($validRequestAttribute->validationGroups),
-        );
+        $violations = $this->validator->validate($dto, groups: $groups);
 
         if ($violations->count() != 0) {
+            $schemaObjectMap = $schema->getObjectMap($validationGroups);
+
+            // Меняем пути к ошибкам с названием свойств класса на названия параметров запроса
+            $violations = $this->violationTransformer->propertyToField($violations, $schemaObjectMap);
+
             if (!$hasViolationsArg) {
                 throw new ValidationFailedException($dto, $violations);
             }

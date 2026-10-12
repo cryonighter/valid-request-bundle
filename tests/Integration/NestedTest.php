@@ -401,4 +401,174 @@ class NestedTest extends AbstractWebTestCase
         $this->assertSame('email', $data['contacts'][0]['type']);
         $this->assertSame('user@example.com', $data['contacts'][0]['value']);
     }
+
+    // =========================================================================
+    // Ассоциативный массив объектов (contacts с произвольными строковыми ключами)
+    // =========================================================================
+
+    /**
+     * contacts передан как ассоциативный массив с произвольными строковыми ключами.
+     * Каждый элемент — валидный объект ContactDTO.
+     * Строковые ключи должны сохраниться в собранном массиве объектов.
+     */
+    public function testAssociativeContactsPreserveStringKeys(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'POST',
+            '/nested/profile',
+            [
+                'username' => 'john',
+                'contacts' => [
+                    'home' => $this->validContact('email', 'home@example.com'),
+                    'work' => $this->validContact('phone', '+79001234567'),
+                ],
+            ],
+        );
+
+        $this->assertResponseIsSuccessful();
+
+        $data = $this->getJsonResponse($browser);
+
+        $this->assertCount(2, $data['contacts']);
+        $this->assertArrayHasKey('home', $data['contacts']);
+        $this->assertArrayHasKey('work', $data['contacts']);
+
+        $this->assertSame('email', $data['contacts']['home']['type']);
+        $this->assertSame('home@example.com', $data['contacts']['home']['value']);
+
+        $this->assertSame('phone', $data['contacts']['work']['type']);
+        $this->assertSame('+79001234567', $data['contacts']['work']['value']);
+    }
+
+    /**
+     * Смешанные ключи: часть элементов с числовыми ключами, часть — со строковыми.
+     * Все ключи должны сохраниться без переиндексации.
+     */
+    public function testMixedKeysContactsPreserveAllKeys(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'POST',
+            '/nested/profile',
+            [
+                'username' => 'john',
+                'contacts' => [
+                    0 => $this->validContact('email', 'user@example.com'),
+                    'backup' => $this->validContact('phone', '+79001234567'),
+                ],
+            ],
+        );
+
+        $this->assertResponseIsSuccessful();
+
+        $data = $this->getJsonResponse($browser);
+
+        $this->assertCount(2, $data['contacts']);
+        $this->assertArrayHasKey(0, $data['contacts']);
+        $this->assertArrayHasKey('backup', $data['contacts']);
+
+        $this->assertSame('email', $data['contacts'][0]['type']);
+        $this->assertSame('phone', $data['contacts']['backup']['type']);
+    }
+
+    /**
+     * Один из элементов ассоциативного массива невалиден.
+     * Путь ошибки должен указывать на конкретный строковый ключ.
+     */
+    public function testAssociativeContactWithInvalidElementReceivesViolationForThatKey(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'POST',
+            '/nested/profile',
+            [
+                'username' => 'john',
+                'contacts' => [
+                    'home' => $this->validContact('email', 'home@example.com'),
+                    'work' => ['type' => 'fax', 'value' => 'ab'],
+                    // TODO: лишнее поле, другое лишнее поле, отсутствующие поля, все с привязкой к ключу
+                ],
+            ],
+        );
+
+        $this->assertResponseStatusCodeSame(422);
+
+        $data = $this->getJsonResponse($browser);
+
+        $paths = array_column($data['errors'], 'property');
+
+        // Violation должен указывать на элемент с ключом "work"
+        $this->assertContains('contacts[work].type', $paths);
+        $this->assertContains('contacts[work].value', $paths);
+
+        // Валидный элемент "home" не должен давать ошибок
+        $this->assertNotContains('contacts[home].type', $paths);
+        $this->assertNotContains('contacts[home].value', $paths);
+    }
+
+    /**
+     * Элемент ассоциативного массива со всеми пустыми полями.
+     * Violations для type и value привязаны к строковому ключу.
+     */
+    public function testAssociativeContactWithAllBlankFieldsReceivesViolationsForThatKey(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'POST',
+            '/nested/profile',
+            [
+                'username' => 'john',
+                'contacts' => [
+                    'primary' => ['type' => '', 'value' => ''],
+                ],
+            ],
+        );
+
+        $this->assertResponseStatusCodeSame(422);
+
+        $data = $this->getJsonResponse($browser);
+
+        $paths = array_column($data['errors'], 'property');
+
+        $this->assertContains('contacts[primary].type', $paths);
+        $this->assertContains('contacts[primary].value', $paths);
+    }
+
+    /**
+     * JSON-формат: ассоциативный массив объектов с произвольными строковыми ключами
+     * корректно разбирается из JSON-тела запроса, ключи сохраняются.
+     */
+    public function testValidJsonRequestWithAssociativeContactsPreservesKeys(): void
+    {
+        $browser = $this->createBrowser();
+        $browser->request(
+            'POST',
+            '/nested/profile',
+            [],
+            [],
+            $this->jsonServerVars(),
+            json_encode(
+                [
+                    'username' => 'john',
+                    'contacts' => [
+                        'home' => ['type' => 'email', 'value' => 'home@example.com'],
+                        'work' => ['type' => 'phone', 'value' => '+79001234567'],
+                    ],
+                ],
+            ),
+        );
+
+        $this->assertResponseIsSuccessful();
+
+        $data = $this->getJsonResponse($browser);
+
+        $this->assertCount(2, $data['contacts']);
+
+        $this->assertArrayHasKey('home', $data['contacts']);
+        $this->assertArrayHasKey('work', $data['contacts']);
+
+        $this->assertSame('email', $data['contacts']['home']['type']);
+        $this->assertSame('phone', $data['contacts']['work']['type']);
+    }
 }

@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning v2.0.0](https://semver.org/spec
 ## [0.2.0] - 2026-10-11
 
 ### Added
-- Unbinding properties from request parameters
+- Unbinding properties from request parameters.
 
-Initial release.
+### Fixed
+- Bug in the handling of associative arrays containing objects.
 
 ## [0.1.0] - 2026-09-13
 
