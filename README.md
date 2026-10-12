@@ -566,44 +566,6 @@ class ProfileUserRequest
 ```
 
 
-### Поддержка загрузки файлов
-
-Бандл поддерживает загрузку файлов через `multipart/form-data`.
-Используйте стандартный класс Symfony для загрузки файлов `UploadedFile` и источник данных `RequestValueSource::files`:
-
-```php
-use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
-use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
-use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
-use Symfony\Component\Validator\Constraints as Assert;
-
-#[ValidRequest]
-class ProfileUserRequest
-{
-    public function __construct(
-        #[BindRequestParam(source: RequestValueSource::files)]
-        #[Assert\File(
-            maxSize: '64k',
-            mimeTypes: [
-                'image/jpeg',
-                'image/png',
-                'image/gif',
-                'image/bmp',
-                'image/webp',
-                'image/svg+xml',
-                'image/avif',
-                'image/apng',
-            ],
-            maxSizeMessage: 'File is too large ({{ size }} {{ suffix }}). Maximum size is {{ limit }} {{ suffix }}',
-            mimeTypesMessage: 'Please upload the correct image ({{ types }})'
-        )]
-        public ?UploadedFile $avatar,
-    ) {}
-}
-```
-
-
 ### Группы валидации
 
 Группы валидации передаются через параметр `groups` атрибута `#[ValidRequest]`,
@@ -763,6 +725,44 @@ class ValueRequest
 ```
 
 В случае конфликта атрибутов `#[BindRequestParam]` и `#[UnbindRequestParam]` приоритет будет выдан последнему.
+
+
+### Поддержка загрузки файлов
+
+Бандл поддерживает загрузку файлов через `multipart/form-data`.
+Используйте стандартный класс Symfony для загрузки файлов `UploadedFile` и источник данных `RequestValueSource::files`:
+
+```php
+use Cryonighter\ValidRequestBundle\Attribute\BindRequestParam;
+use Cryonighter\ValidRequestBundle\Attribute\ValidRequest;
+use Cryonighter\ValidRequestBundle\Enum\RequestValueSource;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[ValidRequest]
+class ProfileUserRequest
+{
+    public function __construct(
+        #[BindRequestParam(source: RequestValueSource::files)]
+        #[Assert\File(
+            maxSize: '64k',
+            mimeTypes: [
+                'image/jpeg',
+                'image/png',
+                'image/gif',
+                'image/bmp',
+                'image/webp',
+                'image/svg+xml',
+                'image/avif',
+                'image/apng',
+            ],
+            maxSizeMessage: 'File is too large ({{ size }} {{ suffix }}). Maximum size is {{ limit }} {{ suffix }}',
+            mimeTypesMessage: 'Please upload the correct image ({{ types }})'
+        )]
+        public ?UploadedFile $avatar,
+    ) {}
+}
+```
 
 
 ### Преобразование типов
@@ -1346,16 +1346,16 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 
 ```bash
 # All tests
-./vendor/bin/phpunit
+./vendor/bin/phpunit --display-warnings
 
 # Only unit
-./vendor/bin/phpunit --testsuite Unit
-
+./vendor/bin/phpunit --display-warnings --testsuite Unit
+ 
 # Only integration
-./vendor/bin/phpunit --testsuite Integration
+./vendor/bin/phpunit --display-warnings --testsuite Integration
 
 # Specific file
-./vendor/bin/phpunit tests/Unit/Service/SchemaSerializationTest.php
+./vendor/bin/phpunit --display-warnings tests/Unit/Service/SchemaSerializationTest.php
 
 # With coating (requires Xdebug or PCOV)
 ./vendor/bin/phpunit --coverage-text
