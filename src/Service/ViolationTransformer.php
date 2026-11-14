@@ -25,7 +25,9 @@ final class ViolationTransformer
                 $result = '';
 
                 foreach ($segments as $segment) {
-                    $isList = array_is_list($deep);
+                    // Дополнительно проверяем на is_array, потому что это может быть массив примитивов, а не объектов
+                    // Тогда $deep будет содержать строку "array"
+                    $isList = is_array($deep) && array_is_list($deep);
 
                     // $deep[$segment] может быть не определен, если валидация идет по лишнему полю, которого нет в объекте
                     // В этом случае ничего делать не нужно, он попадет в else ветку и сформирует правельный путь к ошибке
