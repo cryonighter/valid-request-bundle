@@ -15,7 +15,6 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use function Cryonighter\ValidRequestBundle\empty_data_recursive;
 
 readonly final class PayloadExtractor
 {
@@ -42,16 +41,28 @@ readonly final class PayloadExtractor
     ): ?array {
         $payload = Payload::createFromRequest($request, $validRequestAttribute);
 
-        $data = $this->preparePayloadData($payload, $schema);
+        // Признак того, что хоть какие-то данные пришли из реальных источников,
+        // а не были подставлены из значений по умолчанию
+        $hasInput = false;
+
+        $data = $this->preparePayloadData($payload, $schema, $hasInput);
 
         if ($validRequestAttribute->patcher) {
-            $data = $this->patcherLocator->get($validRequestAttribute->patcher)->patch($data, $request);
+            $patchedData = $this->patcherLocator->get($validRequestAttribute->patcher)->patch($data, $request);
+
+            // Патчер тоже считаем источником входящих данных
+            if ($patchedData !== $data) {
+                $hasInput = true;
+            }
+
+            $data = $patchedData;
         }
 
-        // Это проверку пришлось перенести на более поздний этап, после формирования данных
-        // Иначе при отсутствии данных в основном источнике возвращается null, не смотря на
-        // то что они есть в альтернативных, указанных через BindRequestParam или патчер
-        if ($payload->empty() && empty_data_recursive($data) && $allowedNull) {
+
+        // Решение о null принимается по факту наличия входных данных, а не по содержимому $data:
+        // в $data уже подмешаны значения по умолчанию, и по нему нельзя отличить
+        // "ничего не прислали" от "прислали значения, совпадающие с дефолтами"
+        if ($payload->empty() && !$hasInput && $allowedNull) {
             return null;
         }
 
@@ -77,7 +88,7 @@ readonly final class PayloadExtractor
     /**
      * @throws ReflectionException
      */
-    private function preparePayloadData(Payload $payload, ObjectSchema $schema): array
+    private function preparePayloadData(Payload $payload, ObjectSchema $schema, bool &$hasInput = false): array
     {
         $data = [];
 
@@ -96,8 +107,18 @@ readonly final class PayloadExtractor
             $hasValue = $payload->hasValue($name, $source);
             $value = $payload->getValue($name, $source);
 
+            if ($hasValue) {
+                $hasInput = true;
+            }
+
             if ($bindRequestParam?->patcher) {
-                $data[$name] = $this->patcherLocator->get($bindRequestParam->patcher)->patch($value, $request);
+                $patchedValue = $this->patcherLocator->get($bindRequestParam->patcher)->patch($value, $request);
+
+                if ($patchedValue !== null) {
+                    $hasInput = true;
+                }
+
+                $data[$name] = $patchedValue;
 
                 continue;
             }
@@ -130,7 +151,7 @@ readonly final class PayloadExtractor
 
             // Если это валидируемый not nullable объект и данные являются массивом или отсутствуют - инициализируем внутреннюю структуру
             if ($type->isObject && $hasAssertValid && (is_array($value) || $value === null)) {
-                $data[$name] = $this->preparePayloadData($payload->nested($name), $node->getNestedSchema($groups));
+                $data[$name] = $this->preparePayloadData($payload->nested($name), $node->getNestedSchema($groups), $hasInput);
 
                 continue;
             }
@@ -143,6 +164,7 @@ readonly final class PayloadExtractor
                 if ($itemSchema !== null) {
                     $data[$name] = array_map(
                         fn(mixed $item): mixed => is_array($item)
+                            // Здесь передавать флаг не нужно, так как $value — массив из запроса, то $hasValue уже true
                             ? $this->preparePayloadData(new Payload($item, $request, $validRequest), $itemSchema)
                             : $item, // Если это не массив - оставляем как есть, валидатор проверит тип и выдаст ошибку
                         $value,
