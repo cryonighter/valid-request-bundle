@@ -36,7 +36,7 @@ readonly final class PayloadExtractor
         ObjectSchema $schema,
         ValidRequest $validRequestAttribute,
         Request $request,
-        ValidationGroups $requestGroups,
+        ValidationGroups $groups,
         bool $allowedNull,
     ): ?array {
         $payload = Payload::createFromRequest($request, $validRequestAttribute);
@@ -45,7 +45,7 @@ readonly final class PayloadExtractor
         // а не были подставлены из значений по умолчанию
         $hasInput = false;
 
-        $data = $this->preparePayloadData($payload, $schema, $hasInput);
+        $data = $this->preparePayloadData($payload, $schema, $groups, $hasInput);
 
         if ($validRequestAttribute->patcher) {
             $patchedData = $this->patcherLocator->get($validRequestAttribute->patcher)->patch($data, $request);
@@ -66,15 +66,15 @@ readonly final class PayloadExtractor
             return null;
         }
 
-        $schemaObjectStruct = $schema->getObjectStruct($requestGroups);
+        $schemaObjectStruct = $schema->getObjectStruct($groups);
 
         $notExpectedFields = $validRequestAttribute->source == RequestValueSource::payload ?
             $this->notExpectedFields($payload->toArray(), $schemaObjectStruct) : [];
 
-        $constraints = $this->constraintBuilder->build($schema, $requestGroups, $notExpectedFields);
+        $constraints = $this->constraintBuilder->build($schema, $groups, $notExpectedFields);
 
         $violations = $this->violationTransformer->arrayKeyToObjectKey(
-            $this->validator->validate($data, $constraints, $requestGroups->groups),
+            $this->validator->validate($data, $constraints, $groups->groups),
             $schemaObjectStruct,
         );
 
@@ -88,14 +88,12 @@ readonly final class PayloadExtractor
     /**
      * @throws ReflectionException
      */
-    private function preparePayloadData(Payload $payload, ObjectSchema $schema, bool &$hasInput = false): array
+    private function preparePayloadData(Payload $payload, ObjectSchema $schema, ValidationGroups $groups, bool &$hasInput = false): array
     {
         $data = [];
 
         $request = $payload->request;
         $validRequest = $payload->validRequest;
-
-        $groups = $validRequest->validationGroups;
 
         foreach ($schema->properties as $node) {
             $bindRequestParam = $node->resolveBinding($groups);
@@ -151,7 +149,7 @@ readonly final class PayloadExtractor
 
             // Если это валидируемый not nullable объект и данные являются массивом или отсутствуют - инициализируем внутреннюю структуру
             if ($type->isObject && $hasAssertValid && (is_array($value) || $value === null)) {
-                $data[$name] = $this->preparePayloadData($payload->nested($name), $node->getNestedSchema($groups), $hasInput);
+                $data[$name] = $this->preparePayloadData($payload->nested($name), $node->getNestedSchema($groups), $groups, $hasInput);
 
                 continue;
             }
@@ -165,7 +163,7 @@ readonly final class PayloadExtractor
                     $data[$name] = array_map(
                         fn(mixed $item): mixed => is_array($item)
                             // Здесь передавать флаг не нужно, так как $value — массив из запроса, то $hasValue уже true
-                            ? $this->preparePayloadData(new Payload($item, $request, $validRequest), $itemSchema)
+                            ? $this->preparePayloadData(new Payload($item, $request, $validRequest), $itemSchema, $groups)
                             : $item, // Если это не массив - оставляем как есть, валидатор проверит тип и выдаст ошибку
                         $value,
                     );

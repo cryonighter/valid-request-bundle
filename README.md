@@ -643,6 +643,46 @@ class AuthController
 ```
 
 
+### Группы валидации из выражений
+
+Группы можно вычислять на лету по данным запроса с помощью
+[Symfony ExpressionLanguage](https://symfony.com/doc/current/components/expression_language.html).
+Это позволяет выбирать набор групп (и, как следствие, источники данных через `#[BindRequestParam]`,
+исключения через `#[UnbindRequestParam]` и классы вложенных объектов) без дублирования маршрутов.
+
+В выражении доступна переменная `request` (`Symfony\Component\HttpFoundation\Request`).
+Результатом должна быть строка (имя группы) или массив строк, иначе будет выброшено `\UnexpectedValueException`.
+
+**Основной способ** — объект `Expression`:
+
+```php
+use Symfony\Component\ExpressionLanguage\Expression;
+
+#[ValidRequest(groups: ['Default', new Expression("request.headers.get('X-Scope') == 'admin' ? 'Admin' : 'Public'")])]
+```
+
+**Краткая форма** — строка с префиксом `expr:`. Всё, что префикса не имеет, остаётся обычным именем группы:
+
+```php
+#[ValidRequest(groups: ['Default', "expr:request.query.has('extra') ? 'Extra' : 'Default'"])]
+```
+
+Выражение может вернуть сразу несколько групп:
+
+```php
+#[ValidRequest(groups: "expr:request.query.has('extra') ? ['Default', 'Extra'] : ['Default']")]
+```
+
+Выражения работают и внутри `GroupSequence`:
+
+```php
+#[ValidRequest(groups: new GroupSequence(['Default', "expr:request.query.get('mode') == 'extra' ? 'Extra' : 'Default'"]))]
+```
+
+Зависимость `symfony/expression-language` подключается вместе с бандлом,
+сервис `ExpressionLanguage` регистрируется бандлом самостоятельно.
+
+
 ### Атрибут UnbindRequestParam
 
 Атрибут `#[UnbindRequestParam]` решает обратную задачу — он **исключает свойство из связывания с данными запроса**.
@@ -1293,9 +1333,9 @@ public string $reference = 'computed-ref';
 в проекте не используется нигде кроме маппинга запросов. Именно Serializer обеспечивает
 приведение сложных типов (enum, DateTime) в нативном подходе.
 
-`ValidRequestBundle` работает исключительно через PHP Reflection и `symfony/validator`
-без каких-либо дополнительных зависимостей. Приведение как простых, так и сложных типов
-реализовано собственными кастерами, поэтому Serializer не требуется.
+`ValidRequestBundle` работает через PHP Reflection и `symfony/validator`, единственная
+дополнительная зависимость — `symfony/expression-language` для групп-выражений.
+Приведение как простых, так и сложных типов реализовано собственными кастерами, поэтому Serializer не требуется.
 
 ### Расширяемость
 
@@ -1338,6 +1378,18 @@ public string $reference = 'computed-ref';
 В нативном подходе имя свойства при денормализации переопределяется через `#[SerializedName]`
 и завязано на выбранный нормализатор.
 
+### Динамические группы валидации
+
+В нативных атрибутах группы задаются статически: `#[MapRequestPayload(validationGroups: ['Create'])]`
+принимает только строку или массив строк. Динамический выбор групп в Symfony возможен только
+на уровне уже собранного объекта (`#[GroupSequenceProvider]` / `GroupProviderInterface`) и не имеет доступа
+к запросу, а в формах — через callable в опции `validation_groups`.
+Условное применение отдельных констрейнтов через `Assert\When` и `Assert\Expression` решает другую задачу:
+оно не меняет набор групп, а значит, и источники данных или структуру DTO.
+
+`ValidRequestBundle` позволяет вычислять группы выражением по текущему запросу прямо в `#[ValidRequest]`
+(см. [Группы валидации из выражений](#группы-валидации-из-выражений)).
+
 ### Итоговая таблица
 
 | Возможность                                        | Нативный Symfony              | ValidRequestBundle         |
@@ -1359,6 +1411,7 @@ public string $reference = 'computed-ref';
 | HTTP-статус из коробки при ошибке валидации        | ✅ (422)                      | ❌ (нужен listener)        |
 | Единая стратегия гидрации                          | ⚠️ (зависит от нормализатора) | ✅                         |
 | Раздельные имена свойства и параметра конструктора | ⚠️ (`#[SerializedName]`)      | ✅ (`#[BindRequestParam]`) |
+| Группы валидации, вычисляемые по запросу           | ❌ (только статические)       | ✅ (ExpressionLanguage) |
 
 
 ## Change log

@@ -11,6 +11,9 @@ services:
             - '../src/Enum'
             - '../src/functions.php'
 
+    # symfony/expression-language сам по себе сервис не регистрирует
+    Symfony\Component\ExpressionLanguage\ExpressionLanguage: ~
+
     Cryonighter\ValidRequestBundle\Schema\SchemaFactory:
         arguments:
             $cacheDir: '%kernel.cache_dir%/valid_request_schema'

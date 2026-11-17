@@ -12,11 +12,15 @@ use Cryonighter\ValidRequestBundle\Validation\ValidationGroups;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
+use UnexpectedValueException;
+use Symfony\Component\ExpressionLanguage\Expression;
+use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\ValueResolver;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\HttpKernel\Controller\ValueResolverInterface;
 use Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadata;
+use Symfony\Component\Validator\Constraints\GroupSequence;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
@@ -24,7 +28,10 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 readonly final class ValidRequestResolver implements ValueResolverInterface
 {
+    private const string EXPRESSION_PREFIX = 'expr:';
+
     public function __construct(
+        private ExpressionLanguage $expressionLanguage,
         private ObjectHydrator $objectHydrator,
         private PayloadExtractor $payloadExtractor,
         private SchemaFactory $schemaFactory,
@@ -67,7 +74,8 @@ readonly final class ValidRequestResolver implements ValueResolverInterface
         }
 
         $schema = $this->schemaFactory->create($reflectionClass->getName());
-        $groups = $this->resolveGroups($reflectionClass, $validRequestAttribute->validationGroups);
+        $groups = $validRequestAttribute->groups ?: $this->getDefaultGroups($reflectionClass);
+        $groups = $this->resolveExpressionGroups($groups, $request);
 
         $validationGroups = new ValidationGroups($groups);
         $hasViolationsArg = $this->violationListStorage->hasViolationsArg($request, $argument);
@@ -120,9 +128,66 @@ readonly final class ValidRequestResolver implements ValueResolverInterface
         yield $dto;
     }
 
-    private function resolveGroups(ReflectionClass $reflectionClass, ValidationGroups $validationGroups): array
+    /**
+     * Вычисляет группы-выражения.
+     *
+     * Выражением считается объект Expression или строка с префиксом "expr:".
+     * Все остальные строки — обычные имена групп.
+     *
+     * @return array<string|GroupSequence>
+     */
+    private function resolveExpressionGroups(string|GroupSequence|Expression|array $groups, Request $request): array
     {
-        return $validationGroups->groups ?: array_filter(['Default', $this->getGroupSequence($reflectionClass)]);
+        $arrayGroups = !is_array($groups) ? [$groups] : $groups;
+
+        $resolvedGroups = [];
+
+        foreach ($arrayGroups as $group) {
+            if ($group instanceof GroupSequence) {
+                $resolvedGroups[] = new GroupSequence($this->resolveExpressionGroups($group->groups, $request));
+
+                continue;
+            }
+
+            if (is_array($group)) {
+                array_push($resolvedGroups, ...$this->resolveExpressionGroups($group, $request));
+
+                continue;
+            }
+
+            if (is_string($group) && str_starts_with($group, self::EXPRESSION_PREFIX)) {
+                $group = new Expression(trim(substr($group, strlen(self::EXPRESSION_PREFIX))));
+            }
+
+            if (!$group instanceof Expression) {
+                $resolvedGroups[] = $group;
+
+                continue;
+            }
+
+            $result = $this->expressionLanguage->evaluate($group, ['request' => $request]);
+
+            foreach ((array) $result as $item) {
+                if (!is_string($item)) {
+                    throw new UnexpectedValueException(
+                        sprintf(
+                        'Expression "%s" must evaluate to a string or an array of strings, "%s" given.',
+                            $group,
+                            get_debug_type($result),
+                        ),
+                    );
+                }
+
+                $resolvedGroups[] = $item;
+            }
+        }
+
+        return $resolvedGroups;
+    }
+
+    private function getDefaultGroups(ReflectionClass $reflectionClass): array
+    {
+        return array_filter(['Default', $this->getGroupSequence($reflectionClass)]);
     }
 
     private function getGroupSequence(ReflectionClass $reflectionClass): ?Assert\GroupSequence
